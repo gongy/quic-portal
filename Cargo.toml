@@ -1,0 +1,57 @@
+[package]
+name = "quic-portal"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "QUIC library with NAT traversal"
+license = "MIT"
+
+[lib]
+name = "quic_portal"
+crate-type = ["cdylib"]
+
+[dependencies]
+# PyO3 for Python bindings
+pyo3 = { version = "0.25", features = ["extension-module", "abi3-py38"] }
+
+# Async runtime
+tokio = { version = "1.32", features = ["full"] }
+
+# QUIC implementation
+quinn = "0.10.2"
+rustls = { version = "0.21.7", features = ["dangerous_configuration"] }
+rcgen = "0.11.3"
+
+# Networking utilities
+socket2 = "0.5.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utilities
+anyhow = "1.0"
+bytes = "1.5"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", optional = true }
+
+# Error handling
+thiserror = "1.0"
+
+[features]
+default = []
+# Enable logging for development
+logging = ["tracing-subscriber"]
+
+# Optimize for size in release builds
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Faster builds in development
+[profile.dev]
+opt-level = 0
+debug = true 
