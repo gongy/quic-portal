@@ -1,16 +1,21 @@
-# QUIC Portal
+# QUIC Portal (experimental)
 
-High-performance QUIC communication library with automatic NAT traversal for Modal applications.
+> ⚠️ **Warning**: This library is experimental and not intended for production use.
+
+High-performance QUIC communication library with automatic NAT traversal within Modal applications.
 
 ## Features
 
+- **Automatic NAT traversal**: Built-in STUN discovery and UDP hole punching, using Modal Dict for rendezvous.
 - **High-performance QUIC**: Rust-based implementation for maximum throughput and minimal latency
-- **Automatic NAT traversal**: Built-in STUN discovery and UDP hole punching
-- **Modal integration**: Seamless coordination via Modal's ephemeral Dict
-- **Simple API**: Easy-to-use Portal class with static methods for server/client creation
-- **WebSocket-style messaging**: Send/receive bytes with automatic framing
+- **Simple API**: Easy-to-use Portal class with static methods for server/client creation. WebSocket-style messaging.
 
 ## Installation
+
+```bash
+# Install from PyPi (only certain wheels built)
+pip install ...
+```
 
 ```bash
 # Install from source (requires Rust toolchain)
@@ -21,7 +26,7 @@ pip install .
 
 ## Quick Start
 
-### Basic Usage with Modal
+### Usage with Modal
 
 ```python
 import asyncio
@@ -45,8 +50,6 @@ async def server_function(coord_dict: modal.Dict):
 
 @app.function()
 async def client_function(coord_dict: modal.Dict):
-    # Create client with automatic NAT traversal
-    portal = await Portal.create_client(dict=coord_dict, local_port=5556)
     
     # Send messages
     await portal.send(b"Hello, QUIC!")
@@ -55,21 +58,26 @@ async def client_function(coord_dict: modal.Dict):
         print(f"Got response: {response.decode('utf-8')}")
 
 @app.local_entrypoint()
-async def main():
+async def main(local: bool = False):
     # Create ephemeral coordination dict
     async with modal.Dict.ephemeral() as coord_dict:
         # Start server
         server_task = await server_function.spawn.aio(coord_dict)
         
         # Run client
-        await client_function.remote.aio(coord_dict)
+        if local:
+            # Run test between local environment and remote container.
+            await client_function.local(coord_dict)
+        else:
+            # Run test between two containers.
+            await client_function.remote.aio(coord_dict)
         
         server_task.cancel()
 ```
 
 ### Manual NAT Traversal
 
-For advanced use cases where you handle NAT traversal yourself:
+For advanced use cases where you handle NAT traversal yourself, or the server has a public IP:
 
 ```python
 from quic_portal import Portal
