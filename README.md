@@ -4,11 +4,17 @@
 
 High-performance QUIC communication library with automatic NAT traversal within Modal applications.
 
-## Features
+## Current features
 
 - **Automatic NAT traversal**: Built-in STUN discovery and UDP hole punching, using Modal Dict for rendezvous.
 - **High-performance QUIC**: Rust-based implementation for maximum throughput and minimal latency
 - **Simple API**: Easy-to-use Portal class with static methods for server/client creation. WebSocket-style messaging.
+
+## Upcoming roadmap
+
+- **TODO: Improved NAT traversal**: Handle more complex client-side NATs using port scanning + birthday technique.
+- **TODO: Shared server certificates**: Use a modal.Dict to share server/client certificates, to mutually validate identity.
+- **TODO: Tunable QUIC settings**: Expose currently hardcoded bandwidth optimization as a parameter in Python class.
 
 ## Installation
 
