@@ -185,7 +185,7 @@ def run_benchmark_client(coord_dict: modal.Dict):
 def main():
     """Main benchmark entrypoint."""
 
-    print(f"🚀 Starting QUIC Portal Round-Trip Latency Benchmark")
+    print("🚀 Starting QUIC Portal Round-Trip Latency Benchmark")
     print(f"📈 Iterations: {N_ITERATIONS}")
     print(f"📦 PING size: {PING_SIZE/1024:.1f}KB")
     print(f"📦 PONG size: {PONG_SIZE/1024:.1f}KB")
@@ -219,7 +219,7 @@ def main():
             print(f"Server rounds completed: {server_results['rounds_completed']}")
 
             if "avg_latency" in client_results:
-                print(f"\nLatency Statistics:")
+                print("\nLatency Statistics:")
                 print(f"Average latency: {client_results['avg_latency']:.2f}ms")
                 print(f"Median latency (p50): {client_results['p50_latency']:.2f}ms")
                 print(f"90th percentile (p90): {client_results['p90_latency']:.2f}ms")

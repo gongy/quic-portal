@@ -3,8 +3,7 @@ Tests for quic-portal
 """
 
 import pytest
-import asyncio
-from quic_portal import Portal, PortalError, ConnectionError
+from quic_portal import Portal, ConnectionError
 
 
 def test_portal_creation():

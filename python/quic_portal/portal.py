@@ -1,14 +1,19 @@
-"""
-High-level Python API for QUIC Portal
-"""
-
+import logging
 import socket as socketlib
 import time
-import uuid
 from typing import Optional, Union, Any
 
 from ._core import QuicPortal as _QuicPortal
 from .exceptions import PortalError, ConnectionError
+
+# Simple logger setup
+logger = logging.getLogger("quic_portal")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
 
 
 class Portal:
@@ -77,20 +82,20 @@ class Portal:
         try:
             # Get external IP/port via STUN
             pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-            print(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
+            logger.debug(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
 
             # Register with coordination dict and wait for client
             client_endpoint = None
             while not client_endpoint:
                 pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-                print(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
+                logger.debug(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
 
                 dict["server"] = (pub_ip, pub_port)
                 if "client" in dict:
                     client_endpoint = dict["client"]
-                    print(f"[PORTAL SERVER] Got client endpoint: {client_endpoint}")
+                    logger.debug(f"[PORTAL SERVER] Got client endpoint: {client_endpoint}")
                     break
-                print("[PORTAL SERVER] Waiting for client to register...")
+                logger.debug("[PORTAL SERVER] Waiting for client to register...")
                 time.sleep(0.2)
 
             client_ip, client_port = client_endpoint
@@ -99,18 +104,20 @@ class Portal:
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                print(f"[PORTAL SERVER] Punching to {client_ip}:{client_port}")
+                logger.debug(f"[PORTAL SERVER] Punching to {client_ip}:{client_port}")
                 sock.sendto(b"punch", (client_ip, client_port))
                 try:
                     data, addr = sock.recvfrom(1024)
                     if data == b"punch" and addr[0] == client_ip:
-                        print(f"[PORTAL SERVER] Received punch from client at {addr}")
+                        logger.debug(f"[PORTAL SERVER] Received punch from client at {addr}")
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
                         break
                     elif data == b"punch" and addr[0] != client_ip:
-                        print(f"[PORTAL SERVER] Received punch from unexpected source at {addr}")
-                        print(f"[PORTAL SERVER] Assuming the new source is the client")
+                        logger.debug(
+                            f"[PORTAL SERVER] Received punch from unexpected source at {addr}"
+                        )
+                        logger.debug("[PORTAL SERVER] Assuming the new source is the client")
                         client_ip, client_port = addr
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
@@ -123,10 +130,10 @@ class Portal:
 
             # Close UDP socket before QUIC can use the port
             sock.close()
-            print("[PORTAL SERVER] UDP socket closed, preparing QUIC server")
+            logger.info("[quic-portal server] nat traversal successful")
 
             # Wait a moment to ensure socket is properly closed
-            time.sleep(0.2)
+            time.sleep(0.05)
 
             # Create Portal and start listening
             portal = Portal()
@@ -171,14 +178,14 @@ class Portal:
             server_endpoint = None
             while not server_endpoint:
                 pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-                print(f"[PORTAL CLIENT] Public endpoint: {pub_ip}:{pub_port}")
+                logger.debug(f"[PORTAL CLIENT] Public endpoint: {pub_ip}:{pub_port}")
 
                 dict["client"] = (pub_ip, pub_port)
                 if "server" in dict:
                     server_endpoint = dict["server"]
-                    print(f"[PORTAL CLIENT] Got server endpoint: {server_endpoint}")
+                    logger.debug(f"[PORTAL CLIENT] Got server endpoint: {server_endpoint}")
                     break
-                print("[PORTAL CLIENT] Waiting for server to register...")
+                logger.debug("[PORTAL CLIENT] Waiting for server to register...")
                 time.sleep(0.2)
 
             server_ip, server_port = server_endpoint
@@ -187,12 +194,12 @@ class Portal:
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                print(f"[PORTAL CLIENT] Punching to server at {server_ip}:{server_port}")
+                logger.debug(f"[PORTAL CLIENT] Punching to server at {server_ip}:{server_port}")
                 sock.sendto(b"punch", (server_ip, server_port))
                 try:
                     data, addr = sock.recvfrom(1024)
                     if data == b"punch-ack" and addr[0] == server_ip:
-                        print(f"[PORTAL CLIENT] Received punch-ack from server")
+                        logger.debug("[PORTAL CLIENT] Received punch-ack from server")
                         punch_success = True
                         break
                 except socketlib.timeout:
@@ -201,14 +208,14 @@ class Portal:
             if not punch_success:
                 raise ConnectionError("Failed to punch NAT with server")
 
-            print("[PORTAL CLIENT] Punch successful, establishing QUIC connection")
+            logger.debug("[PORTAL CLIENT] Punch successful, establishing QUIC connection")
 
             # Close UDP socket before QUIC can use the port
             sock.close()
-            print("[PORTAL CLIENT] UDP socket closed, preparing QUIC connection")
+            logger.info("[quic-portal client] nat traversal successful")
 
             # Wait a moment to ensure socket is properly closed
-            time.sleep(0.2)
+            time.sleep(0.05)
 
             # Create Portal and connect
             portal = Portal()
@@ -248,7 +255,7 @@ class Portal:
         try:
             self._core.connect(server_ip, server_port, local_port)
             self._connected = True
-            print(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
+            logger.debug(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
         except Exception as e:
             raise ConnectionError(f"Failed to connect: {e}")
 
@@ -265,7 +272,7 @@ class Portal:
         try:
             self._core.listen(local_port)
             self._connected = True
-            print(f"[PORTAL] QUIC server started on port {local_port}")
+            logger.debug(f"[PORTAL] QUIC server started on port {local_port}")
         except Exception as e:
             raise ConnectionError(f"Failed to start server: {e}")
 
