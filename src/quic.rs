@@ -38,6 +38,9 @@ impl TransportConfigBuilder {
         // Set minimum MTU to avoid fragmentation issues
         transport_config.min_mtu(1200); // Minimum MTU
 
+        // Disable MTU discovery to debug performance issue.
+        transport_config.mtu_discovery_config(None);
+
         transport_config
     }
 }

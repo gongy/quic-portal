@@ -27,9 +27,6 @@ classifiers = [
     "Topic :: Internet",
     "Topic :: System :: Networking",
 ]
-dependencies = [
-    "pynat>=0.7.0",
-]
 
 [project.optional-dependencies]
 modal = [

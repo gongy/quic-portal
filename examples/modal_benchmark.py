@@ -40,7 +40,7 @@ image = (
 # Benchmark constants
 PING_SIZE = 600 * 1024  # 600KB
 PONG_SIZE = 5 * 1024  # 5KB
-N_ITERATIONS = 500
+N_ITERATIONS = 50
 SERVER_REGION = "us-west-1"
 CLIENT_REGION = "us-sanjose-1"
 
@@ -155,8 +155,8 @@ def run_benchmark_client(coord_dict: modal.Dict):
 
         avg_latency = sum(latencies) / num_latencies
         p50_latency = latencies[num_latencies // 2]
+        p75_latency = latencies[int(num_latencies * 0.75)]
         p90_latency = latencies[int(num_latencies * 0.9)]
-        p99_latency = latencies[int(num_latencies * 0.99)]
         min_latency = latencies[0]
         max_latency = latencies[-1]
 
@@ -167,8 +167,8 @@ def run_benchmark_client(coord_dict: modal.Dict):
             "latencies": latencies,
             "avg_latency": avg_latency,
             "p50_latency": p50_latency,
+            "p75_latency": p75_latency,
             "p90_latency": p90_latency,
-            "p99_latency": p99_latency,
             "min_latency": min_latency,
             "max_latency": max_latency,
         }
@@ -222,8 +222,8 @@ def main():
                 print("\nLatency Statistics:")
                 print(f"Average latency: {client_results['avg_latency']:.2f}ms")
                 print(f"Median latency (p50): {client_results['p50_latency']:.2f}ms")
+                print(f"75th percentile (p75): {client_results['p75_latency']:.2f}ms")
                 print(f"90th percentile (p90): {client_results['p90_latency']:.2f}ms")
-                print(f"99th percentile (p99): {client_results['p99_latency']:.2f}ms")
                 print(f"Min latency: {client_results['min_latency']:.2f}ms")
                 print(f"Max latency: {client_results['max_latency']:.2f}ms")
             elif "error" in client_results:

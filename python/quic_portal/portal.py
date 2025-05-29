@@ -5,6 +5,7 @@ from typing import Optional, Union, Any
 
 from ._core import QuicPortal as _QuicPortal
 from .exceptions import PortalError, ConnectionError
+from .nat import get_stun_response
 
 # Simple logger setup
 logger = logging.getLogger("quic_portal")
@@ -14,6 +15,17 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False
+
+
+def get_socket(local_port: int) -> socketlib.socket:
+    """Get a socket with large buffers and non-blocking behavior."""
+    sock = socketlib.socket(socketlib.AF_INET, socketlib.SOCK_DGRAM)
+    sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_RCVBUF, 64 * 1024 * 1024)
+    sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
+    sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
+    sock.bind(("0.0.0.0", local_port))
+    sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior during punching.
+    return sock
 
 
 class Portal:
@@ -71,31 +83,26 @@ class Portal:
         Returns:
             Connected Portal instance
         """
-        # Initialize socket with large buffers
-        sock = socketlib.socket(socketlib.AF_INET, socketlib.SOCK_DGRAM)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_RCVBUF, 64 * 1024 * 1024)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
-        sock.bind(("0.0.0.0", local_port))
-        sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior
+
+        sock = get_socket(local_port)
 
         try:
             # Get external IP/port via STUN
             pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-            logger.debug(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
+            logger.debug(f"[server] Public endpoint: {pub_ip}:{pub_port}")
 
             # Register with coordination dict and wait for client
             client_endpoint = None
             while not client_endpoint:
                 pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-                logger.debug(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
+                logger.debug(f"[server] Public endpoint: {pub_ip}:{pub_port}")
 
                 dict["server"] = (pub_ip, pub_port)
                 if "client" in dict:
                     client_endpoint = dict["client"]
-                    logger.debug(f"[PORTAL SERVER] Got client endpoint: {client_endpoint}")
+                    logger.debug(f"[server] Got client endpoint: {client_endpoint}")
                     break
-                logger.debug("[PORTAL SERVER] Waiting for client to register...")
+                logger.debug("[server] Waiting for client to register...")
                 time.sleep(0.2)
 
             client_ip, client_port = client_endpoint
@@ -104,20 +111,18 @@ class Portal:
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                logger.debug(f"[PORTAL SERVER] Punching to {client_ip}:{client_port}")
+                logger.debug(f"[server] Punching to {client_ip}:{client_port}")
                 sock.sendto(b"punch", (client_ip, client_port))
                 try:
                     data, addr = sock.recvfrom(1024)
                     if data == b"punch" and addr[0] == client_ip:
-                        logger.debug(f"[PORTAL SERVER] Received punch from client at {addr}")
+                        logger.debug(f"[server] Received punch from client at {addr}")
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
                         break
                     elif data == b"punch" and addr[0] != client_ip:
-                        logger.debug(
-                            f"[PORTAL SERVER] Received punch from unexpected source at {addr}"
-                        )
-                        logger.debug("[PORTAL SERVER] Assuming the new source is the client")
+                        logger.debug(f"[server] Received punch from unexpected source at {addr}")
+                        logger.debug("[server] Assuming the new source is the client")
                         client_ip, client_port = addr
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
@@ -130,7 +135,7 @@ class Portal:
 
             # Close UDP socket before QUIC can use the port
             sock.close()
-            logger.info("[quic-portal server] nat traversal successful")
+            logger.info("[server] nat traversal successful")
 
             # Wait a moment to ensure socket is properly closed
             time.sleep(0.05)
@@ -165,27 +170,21 @@ class Portal:
             Connected Portal instance
         """
 
-        # Initialize socket with large buffers
-        sock = socketlib.socket(socketlib.AF_INET, socketlib.SOCK_DGRAM)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_RCVBUF, 64 * 1024 * 1024)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
-        sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
-        sock.bind(("0.0.0.0", local_port))
-        sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior
+        sock = get_socket(local_port)
 
         try:
             # Register with coordination dict and wait for server
             server_endpoint = None
             while not server_endpoint:
                 pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-                logger.debug(f"[PORTAL CLIENT] Public endpoint: {pub_ip}:{pub_port}")
+                logger.debug(f"[client] Public endpoint: {pub_ip}:{pub_port}")
 
                 dict["client"] = (pub_ip, pub_port)
                 if "server" in dict:
                     server_endpoint = dict["server"]
-                    logger.debug(f"[PORTAL CLIENT] Got server endpoint: {server_endpoint}")
+                    logger.debug(f"[client] Got server endpoint: {server_endpoint}")
                     break
-                logger.debug("[PORTAL CLIENT] Waiting for server to register...")
+                logger.debug("[client] Waiting for server to register...")
                 time.sleep(0.2)
 
             server_ip, server_port = server_endpoint
@@ -194,12 +193,12 @@ class Portal:
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                logger.debug(f"[PORTAL CLIENT] Punching to server at {server_ip}:{server_port}")
+                logger.debug(f"[client] Punching to server at {server_ip}:{server_port}")
                 sock.sendto(b"punch", (server_ip, server_port))
                 try:
                     data, addr = sock.recvfrom(1024)
                     if data == b"punch-ack" and addr[0] == server_ip:
-                        logger.debug("[PORTAL CLIENT] Received punch-ack from server")
+                        logger.debug("[client] Received punch-ack from server")
                         punch_success = True
                         break
                 except socketlib.timeout:
@@ -208,11 +207,11 @@ class Portal:
             if not punch_success:
                 raise ConnectionError("Failed to punch NAT with server")
 
-            logger.debug("[PORTAL CLIENT] Punch successful, establishing QUIC connection")
+            logger.debug("[client] Punch successful, establishing QUIC connection")
 
             # Close UDP socket before QUIC can use the port
             sock.close()
-            logger.info("[quic-portal client] nat traversal successful")
+            logger.info("[client] nat traversal successful")
 
             # Wait a moment to ensure socket is properly closed
             time.sleep(0.05)
@@ -230,15 +229,8 @@ class Portal:
     @staticmethod
     def _get_ext_addr(sock, stun_server):
         """Get external IP and port using STUN."""
-        try:
-            from pynat import get_stun_response
-
-            response = get_stun_response(sock, stun_server)
-            return response["ext_ip"], response["ext_port"]
-        except ImportError:
-            raise PortalError(
-                "pynat package required for NAT traversal. Install with: pip install pynat"
-            )
+        response = get_stun_response(sock, stun_server)
+        return response["ext_ip"], response["ext_port"]
 
     def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None) -> None:
         """
