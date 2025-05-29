@@ -13,7 +13,6 @@ Usage:
 
 import time
 
-import os
 import modal
 
 # Create Modal app
@@ -46,33 +45,11 @@ def run_server(coord_dict: modal.Dict):
     """Simple server that echoes messages back to client."""
     from quic_portal import Portal
 
-    print(f"[SERVER] Starting server {os.getenv('MODAL_TASK_ID')}...")
-
-    # Create server with NAT traversal
-    portal = Portal.create_server(dict=coord_dict, local_port=5555)
-
+    print("[SERVER] Starting server...")
+    Portal.create_server(dict=coord_dict, local_port=5555)
     print("[SERVER] Connected! Waiting for messages...")
 
-    # Echo messages back to client
-    message_count = 0
-    while message_count < 5:  # Handle 5 messages then stop
-        data = portal.recv(timeout_ms=10000)
-        if data is None:
-            print("[SERVER] Timeout waiting for message")
-            break
-
-        message_count += 1
-        message = data.decode("utf-8")
-        print(f"[SERVER] Received: {message}")
-
-        # Echo back with modification
-        response = f"Echo #{message_count}: {message}"
-        portal.send(response.encode("utf-8"))
-        print(f"[SERVER] Sent: {response}")
-
-    time.sleep(1.0)
-    portal.close()
-    print("[SERVER] Finished handling messages")
+    time.sleep(10)
 
 
 @app.function(image=image)
@@ -81,38 +58,10 @@ def run_client(coord_dict: modal.Dict):
     from quic_portal import Portal
 
     print("[CLIENT] Starting client...")
-
-    # Create client with NAT traversal
-    portal = Portal.create_client(dict=coord_dict, local_port=5556)
-
+    Portal.create_client(dict=coord_dict, local_port=5556)
     print("[CLIENT] Connected! Sending messages...")
 
-    # Send some messages
-    messages = [
-        "Hello, Modal QUIC!",
-        "This is message #2",
-        "Testing bidirectional communication",
-        "Almost done...",
-        "Final message! 🚀",
-    ]
-
-    for i, msg in enumerate(messages, 1):
-        print(f"[CLIENT] Sending message {i}: {msg}")
-        portal.send(msg.encode("utf-8"))
-
-        # Wait for echo
-        response = portal.recv(timeout_ms=5000)
-        if response:
-            echo = response.decode("utf-8")
-            print(f"[CLIENT] Received echo: {echo}")
-        else:
-            print(f"[CLIENT] No response for message {i}")
-
-        # Small delay between iterations
-        time.sleep(0.2)
-
-    portal.close()
-    print("[CLIENT] All messages sent!")
+    time.sleep(10)
 
 
 @app.local_entrypoint()
