@@ -33,10 +33,10 @@ impl TransportConfigBuilder {
         transport_config.datagram_send_buffer_size(5_000_000); // 5MB
 
         // Use custom fixed window congestion controller for truly constant 1MiB window
-        transport_config.congestion_controller_factory(FixedWindowConfig::new());
+        transport_config.congestion_controller_factory(Arc::new(FixedWindowConfig::new()));
 
         // Set minimum MTU to avoid fragmentation issues
-        transport_config.min_mtu(1200); // Minimum MTU
+        transport_config.min_mtu(1200); // Very conservative MTU for maximum compatibility
 
         // Disable MTU discovery to debug performance issue.
         transport_config.mtu_discovery_config(None);
@@ -61,7 +61,7 @@ impl FixedWindowConfig {
 
 impl quinn::congestion::ControllerFactory for FixedWindowConfig {
     fn build(
-        &self,
+        self: Arc<Self>,
         _now: std::time::Instant,
         _current_mtu: u16,
     ) -> Box<dyn quinn::congestion::Controller> {
@@ -217,13 +217,10 @@ impl QuicConnection {
     }
 
     pub async fn close(self) -> PortalResult<()> {
-        // Close streams
         if let Some(mut send) = self.send_stream.lock().await.take() {
-            let _ = send.finish().await;
+            let _ = send.finish();
         }
-
-        // Close connection
-        self.connection.close(0u32.into(), b"closing");
+        self.connection.close(0u32.into(), b"closed");
         self.endpoint.wait_idle().await;
         Ok(())
     }
@@ -337,45 +334,57 @@ impl QuicClient {
 }
 
 fn configure_client() -> PortalResult<ClientConfig> {
-    // Create a dangerous client config that skips certificate verification
-    // (for development/testing only!)
-    let crypto = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
-        .with_no_client_auth();
+    // Create rustls client config with insecure settings for simplicity
+    let crypto = rustls::ClientConfig::builder_with_provider(
+        rustls::crypto::ring::default_provider().into(),
+    )
+    .with_safe_default_protocol_versions()
+    .map_err(|e| PortalError::QuicError(format!("Failed to create rustls client config: {}", e)))?
+    .dangerous()
+    .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
+    .with_no_client_auth();
 
-    let mut client_config = ClientConfig::new(Arc::new(crypto));
+    // Convert to Quinn's QuicClientConfig
+    let client_crypto = quinn::crypto::rustls::QuicClientConfig::try_from(crypto).map_err(|e| {
+        PortalError::QuicError(format!("Failed to create QUIC client config: {}", e))
+    })?;
 
-    // Use shared transport configuration
+    let mut client_config = ClientConfig::new(Arc::new(client_crypto));
     client_config.transport_config(Arc::new(TransportConfigBuilder::build()));
 
     Ok(client_config)
 }
 
 fn configure_server() -> PortalResult<ServerConfig> {
-    // Generate a self-signed certificate for development
-    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into(), "quic-portal".into()])
-        .map_err(|e| {
-        PortalError::QuicError(format!("Failed to generate certificate: {}", e))
+    // Generate a self-signed certificate
+    let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
+        .map_err(|e| PortalError::QuicError(format!("Failed to generate certificate: {}", e)))?;
+
+    // Convert to the new rustls types
+    let cert_der =
+        rustls_pki_types::CertificateDer::from(cert.serialize_der().map_err(|e| {
+            PortalError::QuicError(format!("Failed to serialize certificate: {}", e))
+        })?);
+    let private_key = rustls_pki_types::PrivateKeyDer::from(
+        rustls_pki_types::PrivatePkcs8KeyDer::from(cert.get_key_pair().serialize_der()),
+    );
+
+    // Create rustls server config
+    let crypto = rustls::ServerConfig::builder_with_provider(
+        rustls::crypto::ring::default_provider().into(),
+    )
+    .with_safe_default_protocol_versions()
+    .map_err(|e| PortalError::QuicError(format!("Failed to create rustls server config: {}", e)))?
+    .with_no_client_auth()
+    .with_single_cert(vec![cert_der], private_key)
+    .map_err(|e| PortalError::QuicError(format!("Failed to set certificate: {}", e)))?;
+
+    // Convert to Quinn's QuicServerConfig
+    let server_crypto = quinn::crypto::rustls::QuicServerConfig::try_from(crypto).map_err(|e| {
+        PortalError::QuicError(format!("Failed to create QUIC server config: {}", e))
     })?;
 
-    let cert_der = cert
-        .serialize_der()
-        .map_err(|e| PortalError::QuicError(format!("Failed to serialize certificate: {}", e)))?;
-    let priv_key = cert.serialize_private_key_der();
-
-    let priv_key = rustls::PrivateKey(priv_key);
-    let cert_chain = vec![rustls::Certificate(cert_der)];
-
-    let crypto = rustls::ServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth()
-        .with_single_cert(cert_chain, priv_key)
-        .map_err(|e| PortalError::QuicError(format!("Failed to configure TLS: {}", e)))?;
-
-    let mut server_config = ServerConfig::with_crypto(Arc::new(crypto));
-
-    // Use shared transport configuration
+    let mut server_config = ServerConfig::with_crypto(Arc::new(server_crypto));
     server_config.transport_config(Arc::new(TransportConfigBuilder::build()));
 
     Ok(server_config)
@@ -385,16 +394,51 @@ fn configure_server() -> PortalResult<ServerConfig> {
 #[derive(Debug)]
 struct SkipServerVerification;
 
-impl rustls::client::ServerCertVerifier for SkipServerVerification {
+impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     fn verify_server_cert(
         &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _end_entity: &rustls_pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls_pki_types::CertificateDer<'_>],
+        _server_name: &rustls_pki_types::ServerName<'_>,
         _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<rustls::client::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::ServerCertVerified::assertion())
+        _now: rustls_pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls_pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls_pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA1,
+            rustls::SignatureScheme::ECDSA_SHA1_Legacy,
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
+            rustls::SignatureScheme::RSA_PSS_SHA256,
+            rustls::SignatureScheme::RSA_PSS_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA512,
+            rustls::SignatureScheme::ED25519,
+            rustls::SignatureScheme::ED448,
+        ]
     }
 }

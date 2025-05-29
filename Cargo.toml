@@ -2,7 +2,7 @@
 name = "quic-portal"
 version = "0.1.2"
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.87.0"
 description = "QUIC library with NAT traversal"
 license = "MIT"
 
@@ -18,12 +18,13 @@ pyo3 = { version = "0.25", features = ["extension-module", "abi3-py38"] }
 tokio = { version = "1.32", features = ["full"] }
 
 # QUIC implementation
-quinn = "0.10.2"
-rustls = { version = "0.21.7", features = ["dangerous_configuration"] }
-rcgen = "0.11.3"
+quinn = "0.11.8"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pki-types = "1.0"
+rcgen = "0.12"
 
 # Networking utilities
-socket2 = "0.5.4"
+socket2 = "0.5.10"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -57,3 +58,6 @@ opt-level = 0
 debug = true 
 
 [workspace]
+
+[patch.crates-io]
+quinn-udp = { git = "https://github.com/gongy/quinn.git" }

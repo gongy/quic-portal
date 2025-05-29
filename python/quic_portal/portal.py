@@ -138,7 +138,7 @@ class Portal:
             logger.info("[server] nat traversal successful")
 
             # Wait a moment to ensure socket is properly closed
-            time.sleep(0.05)
+            time.sleep(0.1)
 
             # Create Portal and start listening
             portal = Portal()
