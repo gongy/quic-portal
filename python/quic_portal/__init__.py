@@ -6,4 +6,4 @@ from .portal import Portal
 from .exceptions import PortalError, ConnectionError
 
 __all__ = ["Portal", "PortalError", "ConnectionError"]
-__version__ = "0.1.4"
+__version__ = "0.1.5"
