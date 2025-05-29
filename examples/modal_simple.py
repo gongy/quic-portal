@@ -11,7 +11,7 @@ Usage:
     modal run modal_simple.py
 """
 
-import asyncio
+import time
 
 import modal
 
@@ -41,21 +41,21 @@ image = (
 
 
 @app.function(image=image)
-async def run_server(coord_dict: modal.Dict):
+def run_server(coord_dict: modal.Dict):
     """Simple server that echoes messages back to client."""
     from quic_portal import Portal
 
     print("[SERVER] Starting server...")
 
     # Create server with NAT traversal
-    portal = await Portal.create_server(dict=coord_dict, local_port=5555)
+    portal = Portal.create_server(dict=coord_dict, local_port=5555)
 
     print("[SERVER] Connected! Waiting for messages...")
 
     # Echo messages back to client
     message_count = 0
     while message_count < 5:  # Handle 5 messages then stop
-        data = await portal.recv(timeout_ms=10000)
+        data = portal.recv(timeout_ms=10000)
         if data is None:
             print("[SERVER] Timeout waiting for message")
             break
@@ -66,22 +66,22 @@ async def run_server(coord_dict: modal.Dict):
 
         # Echo back with modification
         response = f"Echo #{message_count}: {message}"
-        await portal.send(response.encode("utf-8"))
+        portal.send(response.encode("utf-8"))
         print(f"[SERVER] Sent: {response}")
 
-    await portal.close()
+    portal.close()
     print("[SERVER] Finished handling messages")
 
 
 @app.function(image=image)
-async def run_client(coord_dict: modal.Dict):
+def run_client(coord_dict: modal.Dict):
     """Simple client that sends messages and receives echoes."""
     from quic_portal import Portal
 
     print("[CLIENT] Starting client...")
 
     # Create client with NAT traversal
-    portal = await Portal.create_client(dict=coord_dict, local_port=5556)
+    portal = Portal.create_client(dict=coord_dict, local_port=5556)
 
     print("[CLIENT] Connected! Sending messages...")
 
@@ -96,10 +96,10 @@ async def run_client(coord_dict: modal.Dict):
 
     for i, msg in enumerate(messages, 1):
         print(f"[CLIENT] Sending message {i}: {msg}")
-        await portal.send(msg.encode("utf-8"))
+        portal.send(msg.encode("utf-8"))
 
         # Wait for echo
-        response = await portal.recv(timeout_ms=5000)
+        response = portal.recv(timeout_ms=5000)
         if response:
             echo = response.decode("utf-8")
             print(f"[CLIENT] Received echo: {echo}")
@@ -107,30 +107,30 @@ async def run_client(coord_dict: modal.Dict):
             print(f"[CLIENT] No response for message {i}")
 
         # Small delay between iterations
-        await asyncio.sleep(0.5)
+        time.sleep(0.5)
 
-    await portal.close()
+    portal.close()
     print("[CLIENT] All messages sent!")
 
 
 @app.local_entrypoint()
-async def main():
+def main():
     """Main entrypoint that runs server and client."""
     print("🚀 Starting simple QUIC Portal example")
 
     # Create ephemeral Modal Dict for coordination
-    async with modal.Dict.ephemeral() as coord_dict:
+    with modal.Dict.ephemeral() as coord_dict:
         # Start server
         print("📡 Spawning server...")
-        server_task = await run_server.spawn.aio(coord_dict)
+        server_task = run_server.spawn(coord_dict)
 
         # Give server time to start
-        await asyncio.sleep(2)
+        time.sleep(2)
 
         # Run client
         print("🔌 Starting client...")
         try:
-            await run_client.remote.aio(coord_dict)
+            run_client.remote(coord_dict)
         except Exception as e:
             print(f"❌ Client failed: {e}")
 

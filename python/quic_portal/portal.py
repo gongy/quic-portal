@@ -2,8 +2,8 @@
 High-level Python API for QUIC Portal
 """
 
-import asyncio
 import socket as socketlib
+import time
 import uuid
 from typing import Optional, Union, Any
 
@@ -21,13 +21,13 @@ class Portal:
     Example (manual):
         # After NAT hole punching is complete...
         portal = Portal()
-        await portal.connect("192.168.1.100", 5555, local_port=5556)
+        portal.connect("192.168.1.100", 5555, local_port=5556)
 
         # Send messages (WebSocket-style)
-        await portal.send(b"Hello, QUIC!")
+        portal.send(b"Hello, QUIC!")
 
         # Receive messages (blocks until message arrives)
-        data = await portal.recv(timeout_ms=1000)
+        data = portal.recv(timeout_ms=1000)
         if data:
             print(f"Received: {data}")
 
@@ -35,12 +35,12 @@ class Portal:
         import modal
 
         # Server side
-        async with modal.Dict.ephemeral() as coord_dict:
-            server_portal = await Portal.create_server(dict=coord_dict, local_port=5555)
+        with modal.Dict.ephemeral() as coord_dict:
+            server_portal = Portal.create_server(dict=coord_dict, local_port=5555)
 
         # Client side
-        async with modal.Dict.ephemeral() as coord_dict:
-            client_portal = await Portal.create_client(dict=coord_dict, local_port=5556)
+        with modal.Dict.ephemeral() as coord_dict:
+            client_portal = Portal.create_client(dict=coord_dict, local_port=5556)
     """
 
     def __init__(self):
@@ -48,7 +48,7 @@ class Portal:
         self._connected = False
 
     @staticmethod
-    async def create_server(
+    def create_server(
         dict: Any,
         local_port: int = 5555,
         stun_server: tuple[str, int] = ("stun.ekiga.net", 3478),
@@ -72,46 +72,37 @@ class Portal:
         sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
         sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
         sock.bind(("0.0.0.0", local_port))
-        sock.setblocking(False)
+        sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior
 
         try:
             # Get external IP/port via STUN
-            pub_ip, pub_port = await Portal._get_ext_addr(sock, stun_server)
+            pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
             print(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
 
             # Register with coordination dict and wait for client
             client_endpoint = None
             while not client_endpoint:
-                pub_ip, pub_port = await Portal._get_ext_addr(sock, stun_server)
+                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
                 print(f"[PORTAL SERVER] Public endpoint: {pub_ip}:{pub_port}")
 
-                # Write server endpoint to dict
-                if hasattr(dict, "put"):
-                    # Modal Dict
-                    await dict.put.aio(key="server", value=(pub_ip, pub_port))
-                    client_endpoint = await dict.get.aio(key="client")
-                else:
-                    # Regular dict
-                    dict["server"] = (pub_ip, pub_port)
-                    client_endpoint = dict.get("client")
-
-                if client_endpoint:
+                dict["server"] = (pub_ip, pub_port)
+                if "client" in dict:
+                    client_endpoint = dict["client"]
                     print(f"[PORTAL SERVER] Got client endpoint: {client_endpoint}")
                     break
                 print("[PORTAL SERVER] Waiting for client to register...")
-                await asyncio.sleep(0.2)
+                time.sleep(0.2)
 
             client_ip, client_port = client_endpoint
 
             # Punch NAT
             punch_success = False
-            for _ in range(punch_timeout * 5):  # 5 attempts per second
+            start_time = time.time()
+            while time.time() - start_time < punch_timeout:
                 print(f"[PORTAL SERVER] Punching to {client_ip}:{client_port}")
                 sock.sendto(b"punch", (client_ip, client_port))
                 try:
-                    data, addr = await asyncio.wait_for(
-                        asyncio.get_event_loop().sock_recvfrom(sock, 1024), timeout=0.1
-                    )
+                    data, addr = sock.recvfrom(1024)
                     if data == b"punch" and addr[0] == client_ip:
                         print(f"[PORTAL SERVER] Received punch from client at {addr}")
                         sock.sendto(b"punch-ack", addr)
@@ -124,7 +115,7 @@ class Portal:
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
                         break
-                except (asyncio.TimeoutError, BlockingIOError):
+                except socketlib.timeout:
                     continue
 
             if not punch_success:
@@ -135,11 +126,11 @@ class Portal:
             print("[PORTAL SERVER] UDP socket closed, preparing QUIC server")
 
             # Wait a moment to ensure socket is properly closed
-            await asyncio.sleep(0.2)
+            time.sleep(0.2)
 
             # Create Portal and start listening
             portal = Portal()
-            await portal.listen(local_port)
+            portal.listen(local_port)
 
             return portal
 
@@ -148,7 +139,7 @@ class Portal:
             raise ConnectionError(f"Server creation failed: {e}")
 
     @staticmethod
-    async def create_client(
+    def create_client(
         dict: Any,
         local_port: int = 5556,
         stun_server: tuple[str, int] = ("stun.ekiga.net", 3478),
@@ -173,47 +164,38 @@ class Portal:
         sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
         sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
         sock.bind(("0.0.0.0", local_port))
-        sock.setblocking(False)
+        sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior
 
         try:
             # Register with coordination dict and wait for server
             server_endpoint = None
             while not server_endpoint:
-                pub_ip, pub_port = await Portal._get_ext_addr(sock, stun_server)
+                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
                 print(f"[PORTAL CLIENT] Public endpoint: {pub_ip}:{pub_port}")
 
-                # Write client endpoint to dict
-                if hasattr(dict, "put"):
-                    # Modal Dict
-                    await dict.put.aio(key="client", value=(pub_ip, pub_port))
-                    server_endpoint = await dict.get.aio(key="server")
-                else:
-                    # Regular dict
-                    dict["client"] = (pub_ip, pub_port)
-                    server_endpoint = dict.get("server")
-
-                if server_endpoint:
+                dict["client"] = (pub_ip, pub_port)
+                if "server" in dict:
+                    server_endpoint = dict["server"]
                     print(f"[PORTAL CLIENT] Got server endpoint: {server_endpoint}")
                     break
                 print("[PORTAL CLIENT] Waiting for server to register...")
-                await asyncio.sleep(0.2)
+                time.sleep(0.2)
 
             server_ip, server_port = server_endpoint
 
             # Punch NAT
             punch_success = False
-            for _ in range(punch_timeout * 5):  # 5 attempts per second
+            start_time = time.time()
+            while time.time() - start_time < punch_timeout:
                 print(f"[PORTAL CLIENT] Punching to server at {server_ip}:{server_port}")
                 sock.sendto(b"punch", (server_ip, server_port))
                 try:
-                    data, addr = await asyncio.wait_for(
-                        asyncio.get_event_loop().sock_recvfrom(sock, 1024), timeout=0.1
-                    )
+                    data, addr = sock.recvfrom(1024)
                     if data == b"punch-ack" and addr[0] == server_ip:
                         print(f"[PORTAL CLIENT] Received punch-ack from server")
                         punch_success = True
                         break
-                except (asyncio.TimeoutError, BlockingIOError):
+                except socketlib.timeout:
                     continue
 
             if not punch_success:
@@ -226,11 +208,11 @@ class Portal:
             print("[PORTAL CLIENT] UDP socket closed, preparing QUIC connection")
 
             # Wait a moment to ensure socket is properly closed
-            await asyncio.sleep(0.2)
+            time.sleep(0.2)
 
             # Create Portal and connect
             portal = Portal()
-            await portal.connect(server_ip, server_port, local_port)
+            portal.connect(server_ip, server_port, local_port)
 
             return portal
 
@@ -239,7 +221,7 @@ class Portal:
             raise ConnectionError(f"Client creation failed: {e}")
 
     @staticmethod
-    async def _get_ext_addr(sock, stun_server):
+    def _get_ext_addr(sock, stun_server):
         """Get external IP and port using STUN."""
         try:
             from pynat import get_stun_response
@@ -251,19 +233,17 @@ class Portal:
                 "pynat package required for NAT traversal. Install with: pip install pynat"
             )
 
-    async def connect(
-        self, server_ip: str, server_port: int, local_port: Optional[int] = None
-    ) -> None:
+    def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None) -> None:
         """
         Connect to a QUIC server (after NAT traversal is complete).
 
         Args:
             server_ip: Server IP address
             server_port: Server port
-            local_port: Local port (defaults to the one set in __init__)
+            local_port: Local port to bind to (required)
         """
         if local_port is None:
-            local_port = self._local_port
+            raise ValueError("local_port is required for connect()")
 
         try:
             self._core.connect(server_ip, server_port, local_port)
@@ -272,15 +252,15 @@ class Portal:
         except Exception as e:
             raise ConnectionError(f"Failed to connect: {e}")
 
-    async def listen(self, local_port: Optional[int] = None) -> None:
+    def listen(self, local_port: Optional[int] = None) -> None:
         """
         Start QUIC server and wait for connection (after NAT traversal is complete).
 
         Args:
-            local_port: Local port (defaults to the one set in __init__)
+            local_port: Local port to bind to (required)
         """
         if local_port is None:
-            local_port = self._local_port
+            raise ValueError("local_port is required for listen()")
 
         try:
             self._core.listen(local_port)
@@ -289,7 +269,7 @@ class Portal:
         except Exception as e:
             raise ConnectionError(f"Failed to start server: {e}")
 
-    async def send(self, data: Union[bytes, str]) -> None:
+    def send(self, data: Union[bytes, str]) -> None:
         """
         Send data over QUIC (WebSocket-style: no response expected).
 
@@ -304,7 +284,7 @@ class Portal:
 
         self._core.send(data)
 
-    async def recv(self, timeout_ms: Optional[int] = None) -> Optional[bytes]:
+    def recv(self, timeout_ms: Optional[int] = None) -> Optional[bytes]:
         """
         Receive data from QUIC connection (WebSocket-style: blocks until message arrives).
 
@@ -323,7 +303,7 @@ class Portal:
         """Check if connected to QUIC server."""
         return self._core.is_connected()
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """Close all connections."""
         self._core.close()
         self._connected = False

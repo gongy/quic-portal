@@ -9,9 +9,7 @@ Usage:
     modal run modal_benchmark.py
 """
 
-import asyncio
 import time
-import random
 
 import modal
 
@@ -48,7 +46,7 @@ CLIENT_REGION = "us-sanjose-1"
 
 
 @app.function(image=image, region=SERVER_REGION)
-async def run_benchmark_server(coord_dict: modal.Dict):
+def run_benchmark_server(coord_dict: modal.Dict):
     """Benchmark server that receives PING requests and sends PONG responses."""
     from quic_portal import Portal
 
@@ -56,7 +54,7 @@ async def run_benchmark_server(coord_dict: modal.Dict):
     print(f"[SERVER] PING size: {PING_SIZE/1024:.1f}KB, PONG size: {PONG_SIZE/1024:.1f}KB")
 
     # Create server with NAT traversal
-    portal = await Portal.create_server(dict=coord_dict, local_port=5555)
+    portal = Portal.create_server(dict=coord_dict, local_port=5555)
 
     print("[SERVER] Connected! Waiting for PING requests...")
 
@@ -67,7 +65,7 @@ async def run_benchmark_server(coord_dict: modal.Dict):
     rounds_completed = 0
     while rounds_completed < N_ITERATIONS:
         # Receive PING request
-        ping_data = await portal.recv(timeout_ms=30000)  # 30 second timeout
+        ping_data = portal.recv(timeout_ms=30000)  # 30 second timeout
         if ping_data is None:
             print("[SERVER] Timeout waiting for PING request")
             break
@@ -81,11 +79,11 @@ async def run_benchmark_server(coord_dict: modal.Dict):
         print(f"[SERVER] Received PING {rounds_completed}/{N_ITERATIONS}: {len(ping_data)} bytes")
 
         # Send PONG response
-        await portal.send(pong_data)
+        portal.send(pong_data)
         print(f"[SERVER] Sent PONG {rounds_completed}: {len(pong_data)} bytes")
 
     print(f"[SERVER] Benchmark completed! Handled {rounds_completed} round trips")
-    await portal.close()
+    portal.close()
 
     return {
         "rounds_completed": rounds_completed,
@@ -95,7 +93,7 @@ async def run_benchmark_server(coord_dict: modal.Dict):
 
 
 @app.function(image=image, region=CLIENT_REGION)
-async def run_benchmark_client(coord_dict: modal.Dict):
+def run_benchmark_client(coord_dict: modal.Dict):
     """Benchmark client that sends PING requests and measures round-trip latency."""
     from quic_portal import Portal
 
@@ -103,7 +101,7 @@ async def run_benchmark_client(coord_dict: modal.Dict):
     print(f"[CLIENT] PING size: {PING_SIZE/1024:.1f}KB, PONG size: {PONG_SIZE/1024:.1f}KB")
 
     # Create client with NAT traversal
-    portal = await Portal.create_client(dict=coord_dict, local_port=5556)
+    portal = Portal.create_client(dict=coord_dict, local_port=5556)
 
     print("[CLIENT] Connected! Starting latency benchmark...")
 
@@ -121,11 +119,11 @@ async def run_benchmark_client(coord_dict: modal.Dict):
         start_time = time.monotonic()
 
         # Send PING request
-        await portal.send(ping_data)
+        portal.send(ping_data)
         print(f"[CLIENT] Sent PING {i+1}: {len(ping_data)} bytes")
 
         # Wait for PONG response
-        pong_response = await portal.recv(timeout_ms=10000)  # 10 second timeout
+        pong_response = portal.recv(timeout_ms=10000)  # 10 second timeout
 
         # End timing
         end_time = time.monotonic()
@@ -146,9 +144,9 @@ async def run_benchmark_client(coord_dict: modal.Dict):
             break
 
         # Small pause between iterations
-        await asyncio.sleep(0.1)
+        time.sleep(0.1)
 
-    await portal.close()
+    portal.close()
 
     # Calculate statistics
     if latencies:
@@ -184,7 +182,7 @@ async def run_benchmark_client(coord_dict: modal.Dict):
 
 
 @app.local_entrypoint()
-async def main():
+def main():
     """Main benchmark entrypoint."""
 
     print(f"🚀 Starting QUIC Portal Round-Trip Latency Benchmark")
@@ -193,22 +191,22 @@ async def main():
     print(f"📦 PONG size: {PONG_SIZE/1024:.1f}KB")
 
     # Create ephemeral Modal Dict for coordination
-    async with modal.Dict.ephemeral() as coord_dict:
+    with modal.Dict.ephemeral() as coord_dict:
         # Start server
         print("📡 Spawning benchmark server...")
-        server_task = await run_benchmark_server.spawn.aio(coord_dict)
+        server_task = run_benchmark_server.spawn(coord_dict)
 
         # Give server time to start
-        await asyncio.sleep(3)
+        time.sleep(3)
 
         # Run client
         print("🔌 Starting benchmark client...")
         try:
-            client_results = await run_benchmark_client.remote.aio(coord_dict)
+            client_results = run_benchmark_client.remote(coord_dict)
 
             # Get server results
             print("📊 Getting server results...")
-            server_results = await server_task.get.aio()
+            server_results = server_task.get()
 
             # Print summary
             print("\n" + "=" * 60)
