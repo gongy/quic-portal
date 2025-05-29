@@ -41,8 +41,8 @@ image = (
 PING_SIZE = 600 * 1024  # 600KB
 PONG_SIZE = 5 * 1024  # 5KB
 N_ITERATIONS = 50
-SERVER_REGION = "us-west-1"
-CLIENT_REGION = "us-sanjose-1"
+SERVER_REGION = "us-sanjose-1"
+CLIENT_REGION = "us-west-1"
 
 
 @app.function(image=image, region=SERVER_REGION)
@@ -83,6 +83,7 @@ def run_benchmark_server(coord_dict: modal.Dict):
         print(f"[SERVER] Sent PONG {rounds_completed}: {len(pong_data)} bytes")
 
     print(f"[SERVER] Benchmark completed! Handled {rounds_completed} round trips")
+    time.sleep(1.0)
     portal.close()
 
     return {
@@ -182,7 +183,7 @@ def run_benchmark_client(coord_dict: modal.Dict):
 
 
 @app.local_entrypoint()
-def main():
+def main(local: bool = False):
     """Main benchmark entrypoint."""
 
     print("🚀 Starting QUIC Portal Round-Trip Latency Benchmark")
@@ -202,7 +203,10 @@ def main():
         # Run client
         print("🔌 Starting benchmark client...")
         try:
-            client_results = run_benchmark_client.remote(coord_dict)
+            if local:
+                client_results = run_benchmark_client.local(coord_dict)
+            else:
+                client_results = run_benchmark_client.remote(coord_dict)
 
             # Get server results
             print("📊 Getting server results...")
