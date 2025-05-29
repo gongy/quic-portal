@@ -129,4 +129,4 @@ benchmark_results/
 config.local.*
 
 # Generated distribution directory
-quic_portal-0.1.0/
+quic_portal-*/

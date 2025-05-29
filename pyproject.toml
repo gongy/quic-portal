@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "quic-portal"
-version = "0.1.0"
+version = "0.1.1"
 description = "QUIC library with NAT traversal"
 authors = [
     {name = "Richard Gong", email = "richard@modal.com"},
