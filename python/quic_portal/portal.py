@@ -68,7 +68,10 @@ class Portal:
     def create_server(
         dict: Any,
         local_port: int = 5555,
-        stun_server: tuple[str, int] = ("stun.ekiga.net", 3478),
+        stun_servers: list[tuple[str, int]] = [
+            ("stun.ekiga.net", 3478),
+            ("stun.l.google.com", 19302),
+        ],
         punch_timeout: int = 15,
     ) -> "Portal":
         """
@@ -88,46 +91,63 @@ class Portal:
 
         try:
             # Get external IP/port via STUN
-            pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-            logger.debug(f"[server] Public endpoint: {pub_ip}:{pub_port}")
+            pub_addrs = Portal._get_ext_addr(sock, stun_servers)
+            logger.debug(f"[server] Public endpoints: {pub_addrs}")
 
             # Register with coordination dict and wait for client
-            client_endpoint = None
-            while not client_endpoint:
-                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
-                logger.debug(f"[server] Public endpoint: {pub_ip}:{pub_port}")
+            client_endpoints = []
+            while not client_endpoints:
+                pub_addrs = Portal._get_ext_addr(sock, stun_servers)
+                logger.debug(f"[server] Public endpoints: {pub_addrs}")
 
-                dict["server"] = (pub_ip, pub_port)
+                dict["server"] = pub_addrs
                 if "client" in dict:
                     client_endpoint = dict["client"]
-                    logger.debug(f"[server] Got client endpoint: {client_endpoint}")
+                    if isinstance(client_endpoint[0], str):
+                        # Old version added (ip, port) tuple
+                        client_endpoints.append(client_endpoint)
+                    else:
+                        # New version added list of (ip, port) tuples
+                        client_endpoints.extend(client_endpoint)
+
+                    logger.debug(f"[server] Got client endpoints: {client_endpoints}")
                     break
                 logger.debug("[server] Waiting for client to register...")
                 time.sleep(0.2)
 
-            client_ip, client_port = client_endpoint
+            attempts = 0
+
+            # Use these to establish mappings at server-side NAT
+            client_addrs_to_hit = set(client_endpoints)
 
             # Punch NAT
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                logger.debug(f"[server] Punching to {client_ip}:{client_port}")
-                sock.sendto(b"punch", (client_ip, client_port))
+                for endpoint in client_addrs_to_hit:
+                    logger.debug(f"[server] Punching to {endpoint}")
+                    sock.sendto(b"punch", endpoint)
+
                 try:
                     data, addr = sock.recvfrom(1024)
-                    if data == b"punch" and addr[0] == client_ip:
+                    if data == b"punch":
                         logger.debug(f"[server] Received punch from client at {addr}")
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
                         break
-                    elif data == b"punch" and addr[0] != client_ip:
-                        logger.debug(f"[server] Received punch from unexpected source at {addr}")
-                        logger.debug("[server] Assuming the new source is the client")
-                        client_ip, client_port = addr
-                        sock.sendto(b"punch-ack", addr)
-                        punch_success = True
-                        break
                 except socketlib.timeout:
+                    attempts += 1
+                    client_ips = set(addr[0] for addr in client_addrs_to_hit)
+
+                    if attempts == 1:
+                        for client_ip in client_ips:
+                            for _port in range(1000, 9999):
+                                client_addrs_to_hit.add((client_ip, _port))
+                    elif attempts == 2:
+                        for client_ip in client_ips:
+                            for _port in range(1000, 65535):
+                                client_addrs_to_hit.add((client_ip, _port))
+
                     continue
 
             if not punch_success:
@@ -154,7 +174,10 @@ class Portal:
     def create_client(
         dict: Any,
         local_port: int = 5556,
-        stun_server: tuple[str, int] = ("stun.ekiga.net", 3478),
+        stun_servers: list[tuple[str, int]] = [
+            ("stun.ekiga.net", 3478),
+            ("stun.l.google.com", 19302),
+        ],
         punch_timeout: int = 15,
     ) -> "Portal":
         """
@@ -163,7 +186,7 @@ class Portal:
         Args:
             dict: Modal Dict or dict-like object for coordination
             local_port: Local port to bind to
-            stun_server: STUN server for NAT discovery
+            stun_servers: List of STUN servers for NAT discovery
             punch_timeout: Timeout for NAT punching in seconds
 
         Returns:
@@ -174,20 +197,27 @@ class Portal:
 
         try:
             # Register with coordination dict and wait for server
-            server_endpoint = None
-            while not server_endpoint:
-                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_server)
+            server_endpoints = []
+            while not server_endpoints:
+                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_servers)
                 logger.debug(f"[client] Public endpoint: {pub_ip}:{pub_port}")
 
                 dict["client"] = (pub_ip, pub_port)
                 if "server" in dict:
                     server_endpoint = dict["server"]
+                    if isinstance(server_endpoint[0], str):
+                        # Old version added (ip, port) tuple
+                        server_endpoints.append(server_endpoint)
+                    else:
+                        # New version added list of (ip, port) tuples
+                        server_endpoints.extend(server_endpoint)
                     logger.debug(f"[client] Got server endpoint: {server_endpoint}")
                     break
                 logger.debug("[client] Waiting for server to register...")
                 time.sleep(0.2)
 
-            server_ip, server_port = server_endpoint
+            # Server should be fairly stable, so just use first one.
+            server_ip, server_port = server_endpoints[0]
 
             # Punch NAT
             punch_success = False
@@ -197,10 +227,15 @@ class Portal:
                 sock.sendto(b"punch", (server_ip, server_port))
                 try:
                     data, addr = sock.recvfrom(1024)
-                    if data == b"punch-ack" and addr[0] == server_ip:
+                    if data == b"punch-ack" and addr[0] == server_ip and addr[1] == server_port:
                         logger.debug("[client] Received punch-ack from server")
                         punch_success = True
                         break
+                    else:
+                        logger.debug(
+                            f"[client] Received punch-ack from unexpected source at {addr}. Continuing."
+                        )
+                        continue
                 except socketlib.timeout:
                     continue
 
@@ -227,10 +262,10 @@ class Portal:
             raise ConnectionError(f"Client creation failed: {e}")
 
     @staticmethod
-    def _get_ext_addr(sock, stun_server):
+    def _get_ext_addr(sock, stun_servers):
         """Get external IP and port using STUN."""
-        response = get_stun_response(sock, stun_server)
-        return response["ext_ip"], response["ext_port"]
+        responses = [get_stun_response(sock, stun_server) for stun_server in stun_servers]
+        return [(response["ext_ip"], response["ext_port"]) for response in responses]
 
     def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None) -> None:
         """
@@ -249,7 +284,7 @@ class Portal:
             self._connected = True
             logger.debug(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
         except Exception as e:
-            raise ConnectionError(f"Failed to connect: {e}")
+            raise ConnectionError(f"Failed to connect: {e}") from e
 
     def listen(self, local_port: Optional[int] = None) -> None:
         """
@@ -266,7 +301,7 @@ class Portal:
             self._connected = True
             logger.debug(f"[PORTAL] QUIC server started on port {local_port}")
         except Exception as e:
-            raise ConnectionError(f"Failed to start server: {e}")
+            raise ConnectionError(f"Failed to start server: {e}") from e
 
     def send(self, data: Union[bytes, str]) -> None:
         """

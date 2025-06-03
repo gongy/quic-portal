@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Simple Modal QUIC Portal Example
 
@@ -10,8 +9,6 @@ This example demonstrates basic bidirectional communication using Portal static 
 Usage:
     modal run modal_simple.py
 """
-
-import time
 
 import modal
 
@@ -40,57 +37,33 @@ image = (
 )
 
 
-@app.function(image=image)
-def run_server(coord_dict: modal.Dict):
-    """Simple server that echoes messages back to client."""
+@app.function(image=image, region="us-sanjose-1")
+def run_server(rendezvous: modal.Dict):
     from quic_portal import Portal
 
-    print("[SERVER] Starting server...")
-    Portal.create_server(dict=coord_dict, local_port=5555)
-    print("[SERVER] Connected! Waiting for messages...")
+    portal = Portal.create_server(rendezvous)
 
-    time.sleep(10)
+    # Server sends the first message.
+    print("[server] Sending hello ...")
+    portal.send(b"hello")
 
 
-@app.function(image=image)
-def run_client(coord_dict: modal.Dict):
-    """Simple client that sends messages and receives echoes."""
+@app.function(image=image, region="us-west-1")
+def run_client():
     from quic_portal import Portal
 
-    print("[CLIENT] Starting client...")
-    Portal.create_client(dict=coord_dict, local_port=5556)
-    print("[CLIENT] Connected! Sending messages...")
+    with modal.Dict.ephemeral() as rendezvous:
+        run_server.spawn(rendezvous)
+        portal = Portal.create_client(rendezvous)
 
-    time.sleep(10)
+    msg = portal.recv()
+    print(f"[client] Received message: {len(msg)} bytes")
 
 
 @app.local_entrypoint()
 def main():
-    """Main entrypoint that runs server and client."""
-    print("🚀 Starting simple QUIC Portal example")
-
-    # Create ephemeral Modal Dict for coordination
-    with modal.Dict.ephemeral() as coord_dict:
-        # Start server
-        print("📡 Spawning server...")
-        server_task = run_server.spawn(coord_dict)
-
-        # Give server time to start
-        time.sleep(2)
-
-        # Run client
-        print("🔌 Starting client...")
-        try:
-            run_client.remote(coord_dict)
-        except Exception as e:
-            print(f"❌ Client failed: {e}")
-
-        # Cancel server
-        print("🛑 Stopping server...")
-        server_task.cancel()
-
-    print("✨ Example completed!")
+    run_client.local()
 
 
 if __name__ == "__main__":
-    print("Use 'modal run modal_simple.py' to run this example")
+    print("Use 'modal run modal_pings.py' to run this example")

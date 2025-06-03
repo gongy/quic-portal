@@ -132,7 +132,7 @@ def main():
         # Run client
         print("🔌 Starting client...")
         try:
-            run_client.remote(coord_dict)
+            run_client.local(coord_dict)
         except Exception as e:
             print(f"❌ Client failed: {e}")
 
