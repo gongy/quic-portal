@@ -12,9 +12,9 @@ impl TransportConfigBuilder {
     fn build() -> quinn::TransportConfig {
         let mut transport_config = quinn::TransportConfig::default();
 
-        // Increase timeouts
+        // Short timeouts, relying on keep-alive to keep connection fresh.
         transport_config
-            .max_idle_timeout(Some(std::time::Duration::from_secs(60).try_into().unwrap()));
+            .max_idle_timeout(Some(std::time::Duration::from_secs(10).try_into().unwrap()));
 
         // Optimize for large messages - increase all window sizes significantly
         transport_config.receive_window(10_000_000_u32.into()); // 10MB receive window
@@ -40,6 +40,9 @@ impl TransportConfigBuilder {
 
         // Disable MTU discovery to debug performance issue.
         transport_config.mtu_discovery_config(None);
+
+        // Keep alive every 2s.
+        transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
 
         transport_config
     }

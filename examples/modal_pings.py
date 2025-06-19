@@ -10,7 +10,9 @@ Usage:
     modal run modal_simple.py
 """
 
+import random
 import modal
+import time
 
 # Create Modal app
 app = modal.App("quic-portal-simple")
@@ -29,7 +31,7 @@ image = (
     .add_local_file("Cargo.toml", "/tmp/quic-portal/Cargo.toml", copy=True)
     .add_local_file("README.md", "/tmp/quic-portal/README.md", copy=True)
     .add_local_dir("src", "/tmp/quic-portal/src", copy=True)
-    .add_local_dir("python", "/tmp/quic-portal/python", copy=True)
+    .add_local_dir("python", "/tmp/quic-portal/python", ignore=["__pycache__"], copy=True)
     .run_commands(
         "cd /tmp/quic-portal && . $HOME/.cargo/env && maturin build --release",
         "cd /tmp/quic-portal && pip install target/wheels/*.whl",
@@ -41,11 +43,14 @@ image = (
 def run_server(rendezvous: modal.Dict):
     from quic_portal import Portal
 
-    portal = Portal.create_server(rendezvous)
+    random_port = random.randint(10000, 65535)
+    portal = Portal.create_server(rendezvous, local_port=random_port)
 
-    # Server sends the first message.
-    print("[server] Sending hello ...")
-    portal.send(b"hello")
+    while True:
+        msg = portal.recv()
+        print(f"[server] Received message: {len(msg)} bytes")
+        portal.send(b"pong")
+        print("[server] Sent pong")
 
 
 @app.function(image=image, region="us-west-1")
@@ -53,11 +58,26 @@ def run_client():
     from quic_portal import Portal
 
     with modal.Dict.ephemeral() as rendezvous:
-        run_server.spawn(rendezvous)
-        portal = Portal.create_client(rendezvous)
+        handle = run_server.spawn(rendezvous)
 
-    msg = portal.recv()
-    print(f"[client] Received message: {len(msg)} bytes")
+        random_port = random.randint(10000, 65535)
+        portal = Portal.create_client(rendezvous, local_port=random_port)
+        print(f"[client] Connected to server, local port: {random_port}")
+
+    def send_ping():
+        print("[client] Sending ping ...")
+        portal.send(b"ping")
+        msg = portal.recv()
+        print(f"[client] Received pong: {len(msg)} bytes")
+
+    t = 1.0
+    for _ in range(10):
+        send_ping()
+        print(f"[client] Sleeping for {t} seconds ...")
+        time.sleep(t)
+        t *= 2
+
+    handle.cancel()
 
 
 @app.local_entrypoint()
