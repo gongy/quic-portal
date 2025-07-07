@@ -73,6 +73,10 @@ class Portal:
             ("stun.l.google.com", 19302),
         ],
         punch_timeout: int = 15,
+        max_idle_timeout_secs: int = 10,
+        congestion_controller_type: str = "cubic",
+        initial_window: int = 1024 * 1024,
+        keep_alive_interval_secs: int = 2,
     ) -> "Portal":
         """
         Create a QUIC server with automatic NAT traversal.
@@ -82,6 +86,10 @@ class Portal:
             local_port: Local port to bind to
             stun_server: STUN server for NAT discovery
             punch_timeout: Timeout for NAT punching in seconds
+            max_idle_timeout_secs: Maximum idle timeout for QUIC connection in seconds
+            congestion_controller_type: Congestion controller type to use
+            initial_window: Initial window size for QUIC connection
+            keep_alive_interval_secs: Keep alive interval for QUIC connection
 
         Returns:
             Connected Portal instance
@@ -162,7 +170,7 @@ class Portal:
 
             # Create Portal and start listening
             portal = Portal()
-            portal.listen(local_port)
+            portal.listen(local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
 
             return portal
 
@@ -179,6 +187,10 @@ class Portal:
             ("stun.l.google.com", 19302),
         ],
         punch_timeout: int = 15,
+        max_idle_timeout_secs: int = 10,
+        congestion_controller_type: str = "cubic",
+        initial_window: int = 1024 * 1024,
+        keep_alive_interval_secs: int = 2,
     ) -> "Portal":
         """
         Create a QUIC client with automatic NAT traversal.
@@ -188,6 +200,10 @@ class Portal:
             local_port: Local port to bind to
             stun_servers: List of STUN servers for NAT discovery
             punch_timeout: Timeout for NAT punching in seconds
+            max_idle_timeout_secs: Maximum idle timeout for QUIC connection in seconds
+            congestion_controller_type: Congestion controller type to use
+            initial_window: Initial window size for QUIC connection
+            keep_alive_interval_secs: Keep alive interval for QUIC connection
 
         Returns:
             Connected Portal instance
@@ -253,7 +269,7 @@ class Portal:
 
             # Create Portal and connect
             portal = Portal()
-            portal.connect(server_ip, server_port, local_port)
+            portal.connect(server_ip, server_port, local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
 
             return portal
 

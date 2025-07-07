@@ -74,13 +74,17 @@ impl QuicPortal {
         server_ip: String,
         server_port: u16,
         local_port: u16,
+        max_idle_timeout_secs: u64,
+        congestion_controller_type: &str,
+        initial_window: u64,
+        keep_alive_interval_secs: u64,
     ) -> PortalResult<()> {
         let runtime = self.runtime.clone();
         let connection = self.connection.clone();
 
         py.allow_threads(move || {
             runtime.block_on(async move {
-                let client = QuicClient::connect(&server_ip, server_port, local_port).await?;
+                let client = QuicClient::connect(&server_ip, server_port, local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs).await?;
                 *connection.lock().await = Some(QuicConnection::Client(client));
                 Ok(())
             })
@@ -88,13 +92,13 @@ impl QuicPortal {
     }
 
     /// Start QUIC server and wait for connection (server mode)
-    fn listen(&self, py: Python, local_port: u16) -> PortalResult<()> {
+    fn listen(&self, py: Python, local_port: u16, max_idle_timeout_secs: u64, congestion_controller_type: &str, initial_window: u64, keep_alive_interval_secs: u64) -> PortalResult<()> {
         let runtime = self.runtime.clone();
         let connection = self.connection.clone();
 
         py.allow_threads(move || {
             runtime.block_on(async move {
-                let server = QuicServer::listen_and_accept(local_port).await?;
+                let server = QuicServer::listen_and_accept(local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs).await?;
                 *connection.lock().await = Some(QuicConnection::Server(server));
                 Ok(())
             })
