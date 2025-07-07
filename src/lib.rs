@@ -170,6 +170,8 @@ impl QuicPortal {
 /// Python module definition
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pyo3_log::init();
+
     m.add_class::<QuicPortal>()?;
 
     // Add version
