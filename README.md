@@ -182,7 +182,7 @@ See the `examples/` directory for complete working examples:
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.9+
 - Modal (for automatic NAT traversal)
 - Rust toolchain (for building from source)
 
