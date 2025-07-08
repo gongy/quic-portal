@@ -283,7 +283,7 @@ class Portal:
         responses = [get_stun_response(sock, stun_server) for stun_server in stun_servers]
         return [(response["ext_ip"], response["ext_port"]) for response in responses]
 
-    def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None) -> None:
+    def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None, max_idle_timeout_secs: int = 10, congestion_controller_type: str = "cubic", initial_window: int = 1024 * 1024, keep_alive_interval_secs: int = 2) -> None:
         """
         Connect to a QUIC server (after NAT traversal is complete).
 
@@ -296,13 +296,13 @@ class Portal:
             raise ValueError("local_port is required for connect()")
 
         try:
-            self._core.connect(server_ip, server_port, local_port)
+            self._core.connect(server_ip, server_port, local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
             self._connected = True
             logger.debug(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
         except Exception as e:
             raise ConnectionError(f"Failed to connect: {e}") from e
 
-    def listen(self, local_port: Optional[int] = None) -> None:
+    def listen(self, local_port: Optional[int] = None, max_idle_timeout_secs: int = 10, congestion_controller_type: str = "cubic", initial_window: int = 1024 * 1024, keep_alive_interval_secs: int = 2) -> None:
         """
         Start QUIC server and wait for connection (after NAT traversal is complete).
 
@@ -313,7 +313,7 @@ class Portal:
             raise ValueError("local_port is required for listen()")
 
         try:
-            self._core.listen(local_port)
+            self._core.listen(local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
             self._connected = True
             logger.debug(f"[PORTAL] QUIC server started on port {local_port}")
         except Exception as e:
