@@ -3,7 +3,7 @@ import socket as socketlib
 import time
 from typing import Optional, Union, Any
 
-from ._core import QuicPortal as _QuicPortal
+from ._core import QuicPortal as _QuicPortal, QuicTransportOptions as _QuicTransportOptions
 from .exceptions import PortalError, ConnectionError
 from .nat import get_stun_response
 
@@ -15,6 +15,64 @@ if not logger.handlers:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False
+
+
+class QuicTransportOptions:
+    """Configuration options for QUIC transport."""
+
+    def __init__(
+        self,
+        max_idle_timeout_secs: int = 10,
+        congestion_controller_type: str = "cubic",
+        initial_window: int = 1024 * 1024,  # 1MiB
+        keep_alive_interval_secs: int = 2,
+    ):
+        """
+        Initialize QUIC transport options.
+
+        Args:
+            max_idle_timeout_secs: Maximum idle timeout in seconds
+            congestion_controller_type: Congestion controller type ("cubic", "bbr", "fixed")
+            initial_window: Initial window size in bytes
+            keep_alive_interval_secs: Keep alive interval in seconds
+        """
+        self._core = _QuicTransportOptions()
+        self._core.max_idle_timeout_secs = max_idle_timeout_secs
+        self._core.congestion_controller_type = congestion_controller_type
+        self._core.initial_window = initial_window
+        self._core.keep_alive_interval_secs = keep_alive_interval_secs
+
+    @property
+    def max_idle_timeout_secs(self) -> int:
+        return self._core.max_idle_timeout_secs
+
+    @max_idle_timeout_secs.setter
+    def max_idle_timeout_secs(self, value: int):
+        self._core.max_idle_timeout_secs = value
+
+    @property
+    def congestion_controller_type(self) -> str:
+        return self._core.congestion_controller_type
+
+    @congestion_controller_type.setter
+    def congestion_controller_type(self, value: str):
+        self._core.congestion_controller_type = value
+
+    @property
+    def initial_window(self) -> int:
+        return self._core.initial_window
+
+    @initial_window.setter
+    def initial_window(self, value: int):
+        self._core.initial_window = value
+
+    @property
+    def keep_alive_interval_secs(self) -> int:
+        return self._core.keep_alive_interval_secs
+
+    @keep_alive_interval_secs.setter
+    def keep_alive_interval_secs(self, value: int):
+        self._core.keep_alive_interval_secs = value
 
 
 def get_socket(local_port: int) -> socketlib.socket:
@@ -73,10 +131,7 @@ class Portal:
             ("stun.l.google.com", 19302),
         ],
         punch_timeout: int = 15,
-        max_idle_timeout_secs: int = 10,
-        congestion_controller_type: str = "cubic",
-        initial_window: int = 1024 * 1024,
-        keep_alive_interval_secs: int = 2,
+        transport_options: Optional[QuicTransportOptions] = None,
     ) -> "Portal":
         """
         Create a QUIC server with automatic NAT traversal.
@@ -84,12 +139,9 @@ class Portal:
         Args:
             dict: Modal Dict or dict-like object for coordination
             local_port: Local port to bind to
-            stun_server: STUN server for NAT discovery
+            stun_servers: List of STUN servers for NAT discovery
             punch_timeout: Timeout for NAT punching in seconds
-            max_idle_timeout_secs: Maximum idle timeout for QUIC connection in seconds
-            congestion_controller_type: Congestion controller type to use
-            initial_window: Initial window size for QUIC connection
-            keep_alive_interval_secs: Keep alive interval for QUIC connection
+            transport_options: QUIC transport configuration options
 
         Returns:
             Connected Portal instance
@@ -170,7 +222,7 @@ class Portal:
 
             # Create Portal and start listening
             portal = Portal()
-            portal.listen(local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
+            portal.listen(local_port, transport_options or QuicTransportOptions())
 
             return portal
 
@@ -187,10 +239,7 @@ class Portal:
             ("stun.l.google.com", 19302),
         ],
         punch_timeout: int = 15,
-        max_idle_timeout_secs: int = 10,
-        congestion_controller_type: str = "cubic",
-        initial_window: int = 1024 * 1024,
-        keep_alive_interval_secs: int = 2,
+        transport_options: Optional[QuicTransportOptions] = None,
     ) -> "Portal":
         """
         Create a QUIC client with automatic NAT traversal.
@@ -200,10 +249,7 @@ class Portal:
             local_port: Local port to bind to
             stun_servers: List of STUN servers for NAT discovery
             punch_timeout: Timeout for NAT punching in seconds
-            max_idle_timeout_secs: Maximum idle timeout for QUIC connection in seconds
-            congestion_controller_type: Congestion controller type to use
-            initial_window: Initial window size for QUIC connection
-            keep_alive_interval_secs: Keep alive interval for QUIC connection
+            transport_options: QUIC transport configuration options
 
         Returns:
             Connected Portal instance
@@ -269,7 +315,7 @@ class Portal:
 
             # Create Portal and connect
             portal = Portal()
-            portal.connect(server_ip, server_port, local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
+            portal.connect(server_ip, server_port, local_port, transport_options or QuicTransportOptions())
 
             return portal
 
@@ -283,7 +329,7 @@ class Portal:
         responses = [get_stun_response(sock, stun_server) for stun_server in stun_servers]
         return [(response["ext_ip"], response["ext_port"]) for response in responses]
 
-    def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None, max_idle_timeout_secs: int = 10, congestion_controller_type: str = "cubic", initial_window: int = 1024 * 1024, keep_alive_interval_secs: int = 2) -> None:
+    def connect(self, server_ip: str, server_port: int, local_port: Optional[int] = None, transport_options: Optional[QuicTransportOptions] = None) -> None:
         """
         Connect to a QUIC server (after NAT traversal is complete).
 
@@ -291,29 +337,33 @@ class Portal:
             server_ip: Server IP address
             server_port: Server port
             local_port: Local port to bind to (required)
+            transport_options: QUIC transport configuration options
         """
         if local_port is None:
             raise ValueError("local_port is required for connect()")
 
         try:
-            self._core.connect(server_ip, server_port, local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
+            core_options = (transport_options or QuicTransportOptions())._core
+            self._core.connect(server_ip, server_port, local_port, core_options)
             self._connected = True
             logger.debug(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
         except Exception as e:
             raise ConnectionError(f"Failed to connect: {e}") from e
 
-    def listen(self, local_port: Optional[int] = None, max_idle_timeout_secs: int = 10, congestion_controller_type: str = "cubic", initial_window: int = 1024 * 1024, keep_alive_interval_secs: int = 2) -> None:
+    def listen(self, local_port: Optional[int] = None, transport_options: Optional[QuicTransportOptions] = None) -> None:
         """
         Start QUIC server and wait for connection (after NAT traversal is complete).
 
         Args:
             local_port: Local port to bind to (required)
+            transport_options: QUIC transport configuration options
         """
         if local_port is None:
             raise ValueError("local_port is required for listen()")
 
         try:
-            self._core.listen(local_port, max_idle_timeout_secs, congestion_controller_type, initial_window, keep_alive_interval_secs)
+            core_options = (transport_options or QuicTransportOptions())._core
+            self._core.listen(local_port, core_options)
             self._connected = True
             logger.debug(f"[PORTAL] QUIC server started on port {local_port}")
         except Exception as e:
