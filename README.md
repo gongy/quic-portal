@@ -12,10 +12,8 @@ High-performance QUIC communication library with automatic NAT traversal within 
 
 ## Upcoming roadmap
 
-- **TODO: Keep-alive**: Enable initial pings to establish server on create_server/create_client. Also add background pings to keep connection alive.
 - **TODO: Improved NAT traversal**: Handle more complex client-side NATs using port scanning + birthday technique. Currently only supports clients behind "easy" NATs.
 - **TODO: Shared server certificates**: Use a modal.Dict to share server/client certificates, to mutually validate identity.
-- **TODO: Tunable QUIC settings**: Expose currently hardcoded bandwidth optimization as a parameter in Python class.
 
 ## Installation
 
