@@ -1,6 +1,7 @@
 use crate::error::{PortalError, PortalResult};
 use log::error;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, ServerConfig};
+use quinn::congestion::{BbrConfig, CubicConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -38,15 +39,21 @@ impl TransportConfigBuilder {
                 transport_config.congestion_controller_factory(Arc::new(FixedWindowConfig::new(initial_window)));
             }
             "bbr" => {
-                transport_config.congestion_controller_factory(Arc::new(BbrConfig::default().initial_window(initial_window)));
+                let mut bbr_config = BbrConfig::default();
+                bbr_config.initial_window(initial_window);
+                transport_config.congestion_controller_factory(Arc::new(bbr_config));
             }
             "cubic" => {
-                transport_config.congestion_controller_factory(Arc::new(CubicConfig::default().initial_window(initial_window)));
+                let mut cubic_config = CubicConfig::default();
+                cubic_config.initial_window(initial_window);
+                transport_config.congestion_controller_factory(Arc::new(cubic_config));
             }
             _ => {
                 // Default to cubic
                 error!("Invalid congestion controller type: {}. Using default congestion controller: cubic", congestion_controller_type);
-                transport_config.congestion_controller_factory(Arc::new(CubicConfig::default().initial_window(initial_window)));
+                let mut cubic_config = CubicConfig::default();
+                cubic_config.initial_window(initial_window);
+                transport_config.congestion_controller_factory(Arc::new(cubic_config));
             }
         }
 
