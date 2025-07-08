@@ -3,7 +3,7 @@
 Modal QUIC Portal Benchmark
 
 This benchmark tests the round-trip latency of QUIC Portal communication
-using 600KB PING requests and 5KB PONG responses over 25 iterations.
+using 600KB PING requests and 5KB PONG responses over 50 iterations.
 
 Usage:
     modal run modal_benchmark.py

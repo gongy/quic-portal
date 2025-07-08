@@ -4,21 +4,20 @@ build-backend = "maturin"
 
 [project]
 name = "quic-portal"
-version = "0.1.8"
+version = "0.1.9"
 description = "QUIC library with NAT traversal"
 authors = [
     {name = "Richard Gong", email = "richard@modal.com"},
 ]
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 keywords = ["quic", "networking", "nat-traversal", "p2p", "communication"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -61,14 +60,14 @@ asyncio_mode = "auto"
 
 [tool.black]
 line-length = 100
-target-version = ['py38']
+target-version = ['py39']
 
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "py39"
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true 

@@ -1,20 +1,48 @@
 use crate::error::{PortalError, PortalResult};
+use log::error;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, ServerConfig};
+use quinn::congestion::{BbrConfig, CubicConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
 
+/// Configuration options for QUIC transport
+#[derive(Debug, Clone)]
+pub struct TransportOptions {
+    pub max_idle_timeout_secs: u64,
+    pub congestion_controller_type: String,
+    pub initial_window: u64,
+    pub keep_alive_interval_secs: u64,
+}
+
+impl Default for TransportOptions {
+    fn default() -> Self {
+        Self {
+            max_idle_timeout_secs: 10,
+            congestion_controller_type: "cubic".to_string(),
+            initial_window: 1024 * 1024,
+            keep_alive_interval_secs: 2,
+        }
+    }
+}
+
+impl TransportOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// Shared transport configuration builder for consistent QUIC settings
 struct TransportConfigBuilder;
 
 impl TransportConfigBuilder {
-    fn build() -> quinn::TransportConfig {
+    fn build(options: &TransportOptions) -> quinn::TransportConfig {
         let mut transport_config = quinn::TransportConfig::default();
 
         // Short timeouts, relying on keep-alive to keep connection fresh.
         transport_config
-            .max_idle_timeout(Some(std::time::Duration::from_secs(10).try_into().unwrap()));
+            .max_idle_timeout(Some(std::time::Duration::from_secs(options.max_idle_timeout_secs).try_into().unwrap()));
 
         // Optimize for large messages - increase all window sizes significantly
         transport_config.receive_window(10_000_000_u32.into()); // 10MB receive window
@@ -32,8 +60,28 @@ impl TransportConfigBuilder {
         transport_config.datagram_receive_buffer_size(Some(5_000_000)); // 5MB
         transport_config.datagram_send_buffer_size(5_000_000); // 5MB
 
-        // Use custom fixed window congestion controller for truly constant 1MiB window
-        transport_config.congestion_controller_factory(Arc::new(FixedWindowConfig::new()));
+        match options.congestion_controller_type.as_str() {
+            "fixed" => {
+                transport_config.congestion_controller_factory(Arc::new(FixedWindowConfig::new(options.initial_window)));
+            }
+            "bbr" => {
+                let mut bbr_config = BbrConfig::default();
+                bbr_config.initial_window(options.initial_window);
+                transport_config.congestion_controller_factory(Arc::new(bbr_config));
+            }
+            "cubic" => {
+                let mut cubic_config = CubicConfig::default();
+                cubic_config.initial_window(options.initial_window);
+                transport_config.congestion_controller_factory(Arc::new(cubic_config));
+            }
+            _ => {
+                // Default to cubic
+                error!("Invalid congestion controller type: {}. Using default congestion controller: cubic", options.congestion_controller_type);
+                let mut cubic_config = CubicConfig::default();
+                cubic_config.initial_window(options.initial_window);
+                transport_config.congestion_controller_factory(Arc::new(cubic_config));
+            }
+        }
 
         // Set minimum MTU to avoid fragmentation issues
         transport_config.min_mtu(1200); // Very conservative MTU for maximum compatibility
@@ -42,7 +90,7 @@ impl TransportConfigBuilder {
         transport_config.mtu_discovery_config(None);
 
         // Keep alive every 2s.
-        transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(2)));
+        transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(options.keep_alive_interval_secs)));
 
         transport_config
     }
@@ -55,9 +103,9 @@ pub struct FixedWindowConfig {
 }
 
 impl FixedWindowConfig {
-    pub fn new() -> Self {
+    pub fn new(window_size: u64) -> Self {
         Self {
-            window_size: 1024 * 1024, // 1MiB fixed window
+            window_size,
         }
     }
 }
@@ -238,9 +286,9 @@ pub struct QuicServer {
 }
 
 impl QuicServer {
-    pub async fn listen_and_accept(local_port: u16) -> PortalResult<Self> {
+    pub async fn listen_and_accept(local_port: u16, transport_options: &TransportOptions) -> PortalResult<Self> {
         // Configure server
-        let server_config = configure_server()?;
+        let server_config = configure_server(transport_options)?;
         let server_addr = format!("0.0.0.0:{}", local_port)
             .parse::<SocketAddr>()
             .map_err(|e| PortalError::QuicError(format!("Invalid server address: {}", e)))?;
@@ -287,9 +335,9 @@ impl QuicServer {
 }
 
 impl QuicClient {
-    pub async fn connect(server_ip: &str, server_port: u16, local_port: u16) -> PortalResult<Self> {
+    pub async fn connect(server_ip: &str, server_port: u16, local_port: u16, transport_options: &TransportOptions) -> PortalResult<Self> {
         // Configure client
-        let client_config = configure_client()?;
+        let client_config = configure_client(transport_options)?;
         let client_addr = format!("0.0.0.0:{}", local_port)
             .parse::<SocketAddr>()
             .map_err(|e| PortalError::QuicError(format!("Invalid local address: {}", e)))?;
@@ -336,7 +384,7 @@ impl QuicClient {
     }
 }
 
-fn configure_client() -> PortalResult<ClientConfig> {
+fn configure_client(transport_options: &TransportOptions) -> PortalResult<ClientConfig> {
     // Create rustls client config with insecure settings for simplicity
     let crypto = rustls::ClientConfig::builder_with_provider(
         rustls::crypto::ring::default_provider().into(),
@@ -353,12 +401,12 @@ fn configure_client() -> PortalResult<ClientConfig> {
     })?;
 
     let mut client_config = ClientConfig::new(Arc::new(client_crypto));
-    client_config.transport_config(Arc::new(TransportConfigBuilder::build()));
+    client_config.transport_config(Arc::new(TransportConfigBuilder::build(transport_options)));
 
     Ok(client_config)
 }
 
-fn configure_server() -> PortalResult<ServerConfig> {
+fn configure_server(transport_options: &TransportOptions) -> PortalResult<ServerConfig> {
     // Generate a self-signed certificate
     let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
         .map_err(|e| PortalError::QuicError(format!("Failed to generate certificate: {}", e)))?;
@@ -388,7 +436,7 @@ fn configure_server() -> PortalResult<ServerConfig> {
     })?;
 
     let mut server_config = ServerConfig::with_crypto(Arc::new(server_crypto));
-    server_config.transport_config(Arc::new(TransportConfigBuilder::build()));
+    server_config.transport_config(Arc::new(TransportConfigBuilder::build(transport_options)));
 
     Ok(server_config)
 }
