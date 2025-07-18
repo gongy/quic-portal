@@ -62,4 +62,5 @@ debug = true
 [workspace]
 
 [patch.crates-io]
+quinn-proto = { git = "https://github.com/danielshaar/quinn.git" }
 quinn-udp = { git = "https://github.com/danielshaar/quinn.git" }

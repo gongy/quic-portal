@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "quic-portal"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "anyhow",
  "bytes",
@@ -798,15 +798,15 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.12"
-source = "git+https://github.com/gongy/quinn.git#2ae6ab222accc774d30af3d26b70677ba3e53f37"
+version = "0.5.13"
+source = "git+https://github.com/danielshaar/quinn.git#34c2fb67abfd46c065f0abb1fb918af71cd19be0"
 dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
