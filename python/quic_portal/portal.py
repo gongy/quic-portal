@@ -12,7 +12,7 @@ logger = logging.getLogger("quic_portal")
 logger.setLevel(logging.INFO)
 if not logger.handlers:
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
     logger.addHandler(handler)
     logger.propagate = False
 
@@ -21,7 +21,7 @@ quinn_logger = logging.getLogger("quinn")
 quinn_logger.setLevel(logging.INFO)
 if not quinn_logger.handlers:
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
     quinn_logger.addHandler(handler)
     logger.propagate = False
 
@@ -29,7 +29,7 @@ quinn_logger = logging.getLogger("quinn_proto")
 if not quinn_logger.handlers:
     quinn_logger.setLevel(logging.INFO)
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
     quinn_logger.addHandler(handler)
     logger.propagate = False
 
@@ -37,7 +37,7 @@ quinn_logger = logging.getLogger("quinn_udp")
 quinn_logger.setLevel(logging.INFO)
 if not quinn_logger.handlers:
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(name)s] %(levelname)s: %(message)s"))
+    handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
     quinn_logger.addHandler(handler)
     logger.propagate = False
 

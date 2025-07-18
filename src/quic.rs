@@ -211,13 +211,13 @@ impl QuicConnection {
             let length_prefix = (data.len() as u32).to_be_bytes();
             send.write_all(&length_prefix)
                 .await
-                .map_err(|e| PortalError::QuicError(format!("Failed to send length: {}", e)))?;
+                .map_err(|e| PortalError::QuicError(format!("Failed to send length: {:?}", e)))?;
 
             // Send data.
             // TODO: consider chunking.
             send.write_all(&data)
                 .await
-                .map_err(|e| PortalError::QuicError(format!("Failed to send data: {}", e)))?;
+                .map_err(|e| PortalError::QuicError(format!("Failed to send data: {:?}", e)))?;
 
             Ok(())
         } else {
@@ -239,7 +239,7 @@ impl QuicConnection {
                 let mut len_buf = [0u8; 4];
                 recv.read_exact(&mut len_buf)
                     .await
-                    .map_err(|e| PortalError::QuicError(format!("Failed to read length: {}", e)))?;
+                    .map_err(|e| PortalError::QuicError(format!("Failed to read length: {:?}", e)))?;
 
                 let data_length = u32::from_be_bytes(len_buf) as usize;
 
@@ -247,7 +247,7 @@ impl QuicConnection {
                 let mut data = vec![0u8; data_length];
                 recv.read_exact(&mut data)
                     .await
-                    .map_err(|e| PortalError::QuicError(format!("Failed to read data: {}", e)))?;
+                    .map_err(|e| PortalError::QuicError(format!("Failed to read data: {:?}", e)))?;
 
                 Ok(data)
             };
