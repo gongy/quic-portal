@@ -8,6 +8,7 @@ version = "0.1.11"
 description = "QUIC library with NAT traversal"
 authors = [
     {name = "Richard Gong", email = "richard@modal.com"},
+    {name = "Daniel Shaar", email = "daniel@modal.com"},
 ]
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,7 +30,7 @@ classifiers = [
 
 [project.optional-dependencies]
 modal = [
-    "modal>=1.0.0",
+    "modal>=1.1.0",
 ]
 dev = [
     "pytest>=7.0",
@@ -37,7 +38,7 @@ dev = [
     "black>=23.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
-    "modal>=1.0.0",
+    "modal>=1.1.0",
 ]
 
 [project.urls]
