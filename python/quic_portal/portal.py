@@ -18,7 +18,7 @@ if not logger.handlers:
 
 # Enable debug logging for Quinn specifically.
 quinn_logger = logging.getLogger("quinn")
-quinn_logger.setLevel(logging.INFO)
+quinn_logger.setLevel(logging.WARN)
 if not quinn_logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
@@ -27,14 +27,14 @@ if not quinn_logger.handlers:
 
 quinn_logger = logging.getLogger("quinn_proto")
 if not quinn_logger.handlers:
-    quinn_logger.setLevel(logging.INFO)
+    quinn_logger.setLevel(logging.WARN)
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))
     quinn_logger.addHandler(handler)
     logger.propagate = False
 
 quinn_logger = logging.getLogger("quinn_udp")
-quinn_logger.setLevel(logging.INFO)
+quinn_logger.setLevel(logging.WARN)
 if not quinn_logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("[%(name)s] [%(asctime)s] %(levelname)s: %(message)s"))

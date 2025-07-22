@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "quic-portal"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "bytes",
@@ -769,7 +769,7 @@ dependencies = [
 [[package]]
 name = "quinn-proto"
 version = "0.11.13"
-source = "git+https://github.com/danielshaar/quinn.git#f332548da1d7dd168aa4359f1390eafc2967f173"
+source = "git+https://github.com/danielshaar/quinn.git#a776bad2114ab06abcad6ca2097bc1f931026c56"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -791,7 +791,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.13"
-source = "git+https://github.com/danielshaar/quinn.git#f332548da1d7dd168aa4359f1390eafc2967f173"
+source = "git+https://github.com/danielshaar/quinn.git#a776bad2114ab06abcad6ca2097bc1f931026c56"
 dependencies = [
  "cfg_aliases",
  "libc",
