@@ -147,6 +147,10 @@ class Portal:
         self._core = _QuicPortal()
         self._connected = False
 
+        # Only set for client end of portal.
+        self.server_ip = None
+        self.server_port = None
+
     @staticmethod
     def create_server(
         dict: Any,
@@ -371,6 +375,8 @@ class Portal:
             core_options = (transport_options or QuicTransportOptions())._core
             self._core.connect(server_ip, server_port, local_port, core_options)
             self._connected = True
+            self.server_ip = server_ip
+            self.server_port = server_port
             logger.debug(f"[PORTAL] QUIC connection established to {server_ip}:{server_port}")
         except Exception as e:
             raise ConnectionError(f"Failed to connect: {e}") from e
