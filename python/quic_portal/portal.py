@@ -4,7 +4,7 @@ import time
 from typing import Optional, Union, Any
 
 from ._core import QuicPortal as _QuicPortal, QuicTransportOptions as _QuicTransportOptions
-from .exceptions import PortalError, ConnectionError
+from .exceptions import ConnectionError
 from .nat import get_stun_response
 
 # Simple logger setup.
@@ -214,13 +214,24 @@ class Portal:
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
                 for endpoint in client_addrs_to_hit:
-                    logger.debug(f"[server] Punching to {endpoint}")
+                    src_ip, src_port = sock.getsockname()
+                    logger.debug(
+                        f"[server] SEND punch 5-tuple: {src_ip}:{src_port} -> {endpoint[0]}:{endpoint[1]} UDP"
+                    )
                     sock.sendto(b"punch", endpoint)
 
                 try:
                     data, addr = sock.recvfrom(1024)
+                    dst_ip, dst_port = sock.getsockname()
+                    logger.debug(
+                        f"[server] RECV 5-tuple: {addr[0]}:{addr[1]} -> {dst_ip}:{dst_port} UDP data={data!r}"
+                    )
                     if data == b"punch":
                         logger.debug(f"[server] Received punch from client at {addr}")
+                        src_ip, src_port = sock.getsockname()
+                        logger.debug(
+                            f"[server] SEND punch-ack 5-tuple: {src_ip}:{src_port} -> {addr[0]}:{addr[1]} UDP"
+                        )
                         sock.sendto(b"punch-ack", addr)
                         punch_success = True
                         break
@@ -290,10 +301,10 @@ class Portal:
             # Register with coordination dict and wait for server
             server_endpoints = []
             while not server_endpoints:
-                pub_ip, pub_port = Portal._get_ext_addr(sock, stun_servers)
-                logger.debug(f"[client] Public endpoint: {pub_ip}:{pub_port}")
+                client_pub_addrs = Portal._get_ext_addr(sock, stun_servers)
+                logger.debug(f"[client] Public endpoints (STUN): {client_pub_addrs}")
 
-                dict["client"] = (pub_ip, pub_port)
+                dict["client"] = client_pub_addrs
                 if "server" in dict:
                     server_endpoint = dict["server"]
                     if isinstance(server_endpoint[0], str):
@@ -314,18 +325,23 @@ class Portal:
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                logger.debug(f"[client] Punching to server at {server_ip}:{server_port}")
+                src_ip, src_port = sock.getsockname()
+                logger.debug(
+                    f"[client] SEND punch 5-tuple: {src_ip}:{src_port} -> {server_ip}:{server_port} UDP"
+                )
                 sock.sendto(b"punch", (server_ip, server_port))
                 try:
                     data, addr = sock.recvfrom(1024)
+                    dst_ip, dst_port = sock.getsockname()
+                    logger.debug(
+                        f"[client] RECV 5-tuple: {addr[0]}:{addr[1]} -> {dst_ip}:{dst_port} UDP data={data!r}"
+                    )
                     if data == b"punch-ack" and addr[0] == server_ip and addr[1] == server_port:
-                        logger.debug("[client] Received punch-ack from server")
+                        logger.debug("[client] Received punch-ack from server (expected addr)")
                         punch_success = True
                         break
                     else:
-                        logger.debug(
-                            f"[client] Received punch-ack from unexpected source at {addr}. Continuing."
-                        )
+                        logger.debug(f"[client] Message from {addr}, continuing to wait for punch-ack")
                         continue
                 except socketlib.timeout:
                     continue
