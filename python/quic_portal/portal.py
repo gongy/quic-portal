@@ -320,6 +320,7 @@ class Portal:
 
             # Server should be fairly stable, so just use first one.
             server_ip, server_port = server_endpoints[0]
+            allowed_server_ips = {ip for (ip, _port) in server_endpoints}
 
             # Punch NAT
             punch_success = False
@@ -336,7 +337,7 @@ class Portal:
                     logger.debug(
                         f"[client] RECV 5-tuple: {addr[0]}:{addr[1]} -> {dst_ip}:{dst_port} UDP data={data!r}"
                     )
-                    if data == b"punch-ack" and addr[0] == server_ip and addr[1] == server_port:
+                    if data == b"punch-ack" and addr[0] in allowed_server_ips:
                         logger.debug("[client] Received punch-ack from server (expected addr)")
                         punch_success = True
                         break
