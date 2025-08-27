@@ -152,6 +152,19 @@ class Portal:
         self.server_port = None
 
     @staticmethod
+    def _send_punch_ack_burst(sock: socketlib.socket, addr: tuple[str, int]) -> None:
+        """
+        Send a small burst of punch-acks to improve reliability against UDP loss/NAT timing.
+        """
+        src_ip, src_port = sock.getsockname()
+        for _ in range(5):
+            logger.debug(
+                f"[server] SEND punch-ack 5-tuple: {src_ip}:{src_port} -> {addr[0]}:{addr[1]} UDP"
+            )
+            sock.sendto(b"punch-ack", addr)
+            time.sleep(0.03)
+
+    @staticmethod
     def create_server(
         dict: Any,
         local_port: int = 5555,
@@ -227,12 +240,22 @@ class Portal:
                         f"[server] RECV 5-tuple: {addr[0]}:{addr[1]} -> {dst_ip}:{dst_port} UDP data={data!r}"
                     )
                     if data == b"punch":
-                        logger.debug(f"[server] Received punch from client at {addr}")
-                        src_ip, src_port = sock.getsockname()
-                        logger.debug(
-                            f"[server] SEND punch-ack 5-tuple: {src_ip}:{src_port} -> {addr[0]}:{addr[1]} UDP"
-                        )
-                        sock.sendto(b"punch-ack", addr)
+                        Portal._send_punch_ack_burst(sock, addr)
+
+                        # Briefly linger to re-ack any duplicate punches to align with NAT timing windows
+                        linger_deadline = min(time.time() + 1.0, start_time + punch_timeout)
+                        while time.time() < linger_deadline:
+                            try:
+                                data2, addr2 = sock.recvfrom(1024)
+                                logger.debug(
+                                    f"[server] RECV 5-tuple: {addr2[0]}:{addr2[1]} -> {dst_ip}:{dst_port} UDP data={data2!r}"
+                                )
+                                if data2 == b"punch":
+                                    Portal._send_punch_ack_burst(sock, addr2)
+                            except socketlib.timeout:
+                                # Keep looping until linger timeout
+                                pass
+
                         punch_success = True
                         break
                 except socketlib.timeout:
