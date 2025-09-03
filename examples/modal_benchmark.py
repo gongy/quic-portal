@@ -28,6 +28,7 @@ image = (
     # Copy and build quic-portal
     .add_local_file("pyproject.toml", "/tmp/quic-portal/pyproject.toml", copy=True)
     .add_local_file("Cargo.toml", "/tmp/quic-portal/Cargo.toml", copy=True)
+    .add_local_file("Cargo.lock", "/tmp/quic-portal/Cargo.lock", copy=True)
     .add_local_file("README.md", "/tmp/quic-portal/README.md", copy=True)
     .add_local_dir("src", "/tmp/quic-portal/src", copy=True)
     .add_local_dir("python", "/tmp/quic-portal/python", copy=True)
