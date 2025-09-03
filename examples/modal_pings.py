@@ -1,13 +1,14 @@
+#!/usr/bin/env python3
 """
-Simple Modal QUIC Portal Example
+Modal QUIC Pings
 
-This example demonstrates basic bidirectional communication using Portal static methods:
+This example demonstrates PING/PONG communication using Portal static methods:
 1. Server and client coordinate via ephemeral Modal Dict
 2. NAT traversal handled automatically by Portal.create_server/create_client
-3. Simple message exchange over QUIC
+3. PING/PONG messages are sent and received over QUIC
 
 Usage:
-    modal run modal_simple.py
+    modal run modal_pings.py
 """
 
 import random
@@ -15,7 +16,7 @@ import modal
 import time
 
 # Create Modal app
-app = modal.App("quic-portal-simple")
+app = modal.App("quic-portal-pings")
 
 # Modal image with quic-portal installed
 image = (
