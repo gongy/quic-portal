@@ -107,7 +107,8 @@ def get_socket(local_port: int) -> socketlib.socket:
     sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_SNDBUF, 64 * 1024 * 1024)
     sock.setsockopt(socketlib.SOL_SOCKET, socketlib.SO_REUSEADDR, 1)
     sock.bind(("0.0.0.0", local_port))
-    sock.settimeout(0.1)  # 100ms timeout for non-blocking behavior during punching.
+    # Use a slightly higher timeout to better catch NAT responses during punching.
+    sock.settimeout(0.5)
     return sock
 
 
@@ -222,11 +223,14 @@ class Portal:
             # Use these to establish mappings at server-side NAT
             client_addrs_to_hit = set(client_endpoints)
 
+            # Maintain a small predicted-port window for symmetric/port-randomizing NATs.
+            PREDICT_WINDOW = 16
+
             # Punch NAT
             punch_success = False
             start_time = time.time()
             while time.time() - start_time < punch_timeout:
-                for endpoint in client_addrs_to_hit:
+                for endpoint in list(client_addrs_to_hit):
                     src_ip, src_port = sock.getsockname()
                     logger.debug(
                         f"[server] SEND punch 5-tuple: {src_ip}:{src_port} -> {endpoint[0]}:{endpoint[1]} UDP"
@@ -260,18 +264,17 @@ class Portal:
                         break
                 except socketlib.timeout:
                     attempts += 1
-                    client_ips = set(addr[0] for addr in client_addrs_to_hit)
 
-                    if attempts == 1:
-                        for client_ip in client_ips:
-                            for _port in range(1000, 9999):
-                                client_addrs_to_hit.add((client_ip, _port))
-                    elif attempts == 2:
-                        for client_ip in client_ips:
-                            for _port in range(1000, 65535):
-                                client_addrs_to_hit.add((client_ip, _port))
+                    # Expand with a small predicted port window around known client ports
+                    new_targets = set()
+                    for (client_ip, client_port) in list(client_addrs_to_hit):
+                        new_targets.add((client_ip, client_port))
 
-                    continue
+                        for delta in range(1, PREDICT_WINDOW + 1):
+                            new_targets.add((client_ip, (client_port + delta) % 65535))
+                            new_targets.add((client_ip, (client_port - delta) % 65535))
+
+                    client_addrs_to_hit.update(new_targets)
 
             if not punch_success:
                 raise ConnectionError("Failed to punch NAT with client")
@@ -368,7 +371,10 @@ class Portal:
                         logger.debug(f"[client] Message from {addr}, continuing to wait for punch-ack")
                         continue
                 except socketlib.timeout:
-                    continue
+                    pass
+
+                # Avoid tight spin to reduce packet loss and rate limits
+                time.sleep(0.03)
 
             if not punch_success:
                 raise ConnectionError("Failed to punch NAT with server")
